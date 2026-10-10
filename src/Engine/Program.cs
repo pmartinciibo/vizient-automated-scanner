@@ -91,7 +91,7 @@ try
 
     foreach (var disabled in results.Where(r => r.Disabled))
     {
-        Console.WriteLine($"Disabled by request: {disabled.Tool}");
+        Console.WriteLine($"Disabled: {disabled.Tool}");
     }
 
     var failures = results.Where(r => !r.Succeeded).ToList();

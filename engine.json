@@ -8,5 +8,76 @@
     "logs": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\logs"
   },
   "statusIntervalSeconds": 5,
-  "commandIntervalSeconds": 2
+  "commandIntervalSeconds": 2,
+  "sources": [
+    { "source": "ADO",    "org": "vizientinc",  "tokenSecret": "ado-pat" },
+    { "source": "GitHub", "org": "RnD-Vizient", "tokenSecret": "github-token" }
+  ],
+  "scanArchived": false,
+  "skip": { "enabled": true, "canaryPercent": 5, "fullRescanEveryDays": 30 },
+  "retry": { "maxAttempts": 2, "backoffSeconds": 60 },
+  "tools": {
+    "Rapid7": {
+      "enabled": true,
+      "tokenSecret": "rapid7-token",
+      "baseUrl": "https://example.invalid/api"
+    },
+    "CheckMarx": {
+      "enabled": true,
+      "tokenSecret": "checkmarx-token",
+      "baseUrl": "https://example.invalid/api"
+    },
+    "RepoClone": {
+      "enabled": true,
+      "maxParallel": 12,
+      "timeoutMinutes": 60,
+      "longPaths": true
+    },
+    "TruffleHog": {
+      "enabled": true,
+      "maxParallel": 8,
+      "timeoutMinutes": 30,
+      "version": "3.x",
+      "rulesVersion": "detectors-3.x",
+      "mode": "filesystem",
+      "verify": false
+    },
+    "Semgrep": {
+      "enabled": true,
+      "maxParallel": 8,
+      "timeoutMinutes": 30,
+      "version": "1.x",
+      "rulesVersion": "p/default@2026-10-01",
+      "packs": [ "p/default", "p/owasp-top-ten", "p/cwe-top-25" ]
+    },
+    "Snyk": {
+      "enabled": true,
+      "maxParallel": 4,
+      "timeoutMinutes": 45,
+      "version": "1.x",
+      "rulesVersion": "n/a",
+      "mode": "code",
+      "env": { "SNYK_TOKEN": "snyk-token" },
+      "runAs": { "account": "DOMAIN\\svc-buildtools", "passwordSecret": "buildtools-account-password" }
+    },
+    "SonarStandard": {
+      "enabled": true,
+      "maxParallel": 4,
+      "timeoutMinutes": 60,
+      "version": "10.x",
+      "rulesVersion": "profile-2026-10-01",
+      "serverUrl": "http://localhost:9000",
+      "env": { "SONAR_TOKEN": "sonar-token" }
+    },
+    "SonarDotNet": {
+      "enabled": true,
+      "maxParallel": 4,
+      "timeoutMinutes": 60,
+      "version": "10.x",
+      "rulesVersion": "profile-2026-10-01",
+      "serverUrl": "http://localhost:9000",
+      "env": { "SONAR_TOKEN": "sonar-token" },
+      "runAs": { "account": "DOMAIN\\svc-buildtools", "passwordSecret": "buildtools-account-password" }
+    }
+  }
 }

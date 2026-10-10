@@ -12,9 +12,13 @@ public sealed record EngineConfig(
     string TmpRoot,
     string LogsRoot,
     int StatusIntervalSeconds = 5,
-    int CommandIntervalSeconds = 2)
+    int CommandIntervalSeconds = 2,
+    EngineSettings? Settings = null)
 {
     public const string FileName = "engine.json";
+
+    /// <summary>Sources, retry, skip and tool settings. Empty when engine.json has none, so built-in defaults apply.</summary>
+    public EngineSettings Current => Settings ?? new EngineSettings();
 
     /// <summary>Loads engine.json from the folder the executable runs from. It is never searched for.</summary>
     public static Task<EngineConfig> LoadAsync(CancellationToken cancellationToken = default) =>
@@ -37,6 +41,9 @@ public sealed record EngineConfig(
             throw new InvalidDataException($"{FileName}: statusIntervalSeconds and commandIntervalSeconds must be at least 1.");
         }
 
+        var settings = document.ToSettings();
+        EngineSettingsValidator.Validate(settings);
+
         return new EngineConfig(
             fullPath,
             Resolve(baseDir, paths.ReposRoot, nameof(paths.ReposRoot)),
@@ -45,7 +52,8 @@ public sealed record EngineConfig(
             Resolve(baseDir, paths.Tmp, nameof(paths.Tmp)),
             Resolve(baseDir, paths.Logs, nameof(paths.Logs)),
             document.StatusIntervalSeconds,
-            document.CommandIntervalSeconds);
+            document.CommandIntervalSeconds,
+            settings);
     }
 
     /// <summary>Creates any folder the engine writes into.</summary>

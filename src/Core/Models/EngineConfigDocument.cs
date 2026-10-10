@@ -6,6 +6,22 @@ public sealed record EngineConfigDocument
     public EnginePathsConfig Paths { get; init; } = new();
     public int StatusIntervalSeconds { get; init; } = 5;
     public int CommandIntervalSeconds { get; init; } = 2;
+
+    // The settings below sit at the top level of engine.json. They are kept together as EngineSettings once loaded.
+    public List<SourceSettings> Sources { get; init; } = new();
+    public bool ScanArchived { get; init; }
+    public SkipSettings Skip { get; init; } = new();
+    public RetrySettings Retry { get; init; } = new();
+    public Dictionary<string, ToolSettings> Tools { get; init; } = new();
+
+    public EngineSettings ToSettings() => new()
+    {
+        Sources = Sources,
+        ScanArchived = ScanArchived,
+        Skip = Skip,
+        Retry = Retry,
+        Tools = Tools
+    };
 }
 
 public sealed record EnginePathsConfig

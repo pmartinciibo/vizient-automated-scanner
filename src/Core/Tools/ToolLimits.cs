@@ -3,14 +3,12 @@ using Vizient.AutomatedScanner.Core.Processes;
 namespace Vizient.AutomatedScanner.Core.Tools;
 
 /// <summary>
-/// The limits a tool's repos run under. These are the design's defaults (section 9.1 and the engine.json
-/// example), with the per-run overrides from request.json applied. They move into engine.json once its
-/// tool settings exist.
+/// The limits a tool's repos run under. For each setting a per-run override in request.json wins, then the
+/// tool's entry in engine.json, then the design's default (section 9.1), so an engine.json with no tool
+/// settings still works.
 /// </summary>
 public sealed record ToolLimits(int MaxParallel, TimeSpan Timeout, RetryPolicy Retry)
 {
-    public static readonly RetryPolicy DefaultRetry = new(MaxAttempts: 2, Backoff: TimeSpan.FromSeconds(60));
-
     private static readonly Dictionary<string, (int MaxParallel, int TimeoutMinutes)> Defaults = new()
     {
         [ToolNames.RepoClone] = (12, 60),
@@ -23,7 +21,12 @@ public sealed record ToolLimits(int MaxParallel, TimeSpan Timeout, RetryPolicy R
 
     public static ToolLimits For(RunContext context, string tool)
     {
-        var (maxParallel, timeoutMinutes) = Defaults.GetValueOrDefault(tool, (1, 30));
+        var (defaultParallel, defaultMinutes) = Defaults.GetValueOrDefault(tool, (1, 30));
+        var settings = context.Config.Current;
+        var configured = settings.Tool(tool);
+
+        var maxParallel = configured.MaxParallel ?? defaultParallel;
+        var timeoutMinutes = configured.TimeoutMinutes ?? defaultMinutes;
 
         if (context.Request.Tools.TryGetValue(tool, out var overrides))
         {
@@ -38,6 +41,7 @@ public sealed record ToolLimits(int MaxParallel, TimeSpan Timeout, RetryPolicy R
             }
         }
 
-        return new ToolLimits(maxParallel, TimeSpan.FromMinutes(timeoutMinutes), DefaultRetry);
+        var retry = new RetryPolicy(settings.Retry.MaxAttempts, TimeSpan.FromSeconds(settings.Retry.BackoffSeconds));
+        return new ToolLimits(maxParallel, TimeSpan.FromMinutes(timeoutMinutes), retry);
     }
 }

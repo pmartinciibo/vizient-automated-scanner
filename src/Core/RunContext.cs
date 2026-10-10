@@ -27,9 +27,14 @@ public sealed record RunContext(
     CommandLog Commands,
     IProcessRunner Processes)
 {
-    /// <summary>A tool is enabled unless the request says otherwise.</summary>
-    public bool IsEnabled(string tool) =>
-        !Request.Tools.TryGetValue(tool, out var overrides) || overrides.Enabled != false;
+    /// <summary>
+    /// A tool is on unless the request or engine.json turns it off. A request can also turn on a tool that
+    /// engine.json has off, for one run.
+    /// </summary>
+    public bool IsEnabled(string tool) => DisabledReason(Config, Request, tool) is null;
+
+    private static string? DisabledReason(EngineConfig config, RunRequestDocument request, string tool) =>
+        ToolEnablement.DisabledReason(request, config.Current.Tool(tool), tool);
 
     /// <summary>
     /// Reads the external request file, creates (or reopens) the run folder under the configured runs root,
@@ -83,7 +88,12 @@ public sealed record RunContext(
         var invocation = InvocationPaths.For(requestPath);
 
         // Read any earlier status.json (attempt, lastCommandSeq) before this run starts rewriting it.
-        var status = await RunStatusTracker.CreateAsync(paths, invocation, request, cancellationToken: cancellationToken);
+        var status = await RunStatusTracker.CreateAsync(
+            paths,
+            invocation,
+            request,
+            cancellationToken: cancellationToken,
+            disabledReason: tool => DisabledReason(config, request, tool));
 
         // Commands recorded by earlier attempts of this run, if any.
         var commands = await CommandLog.CreateAsync(paths, request.RunId, cancellationToken);

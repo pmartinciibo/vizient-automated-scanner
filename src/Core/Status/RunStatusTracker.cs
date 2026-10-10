@@ -31,14 +31,15 @@ public sealed class RunStatusTracker
         RunRequestDocument request,
         int attempt,
         long lastCommandSeq,
-        TimeProvider time)
+        TimeProvider time,
+        Func<string, string?> disabledReason)
     {
         _request = request;
         _attempt = attempt;
         _lastCommandSeq = lastCommandSeq;
         _time = time;
         _startedAt = time.GetUtcNow();
-        _steps = ToolNames.All.ToDictionary(name => name, name => InitialStep(name, request));
+        _steps = ToolNames.All.ToDictionary(name => name, name => InitialStep(name, disabledReason(name)));
     }
 
     /// <summary>
@@ -46,13 +47,15 @@ public sealed class RunStatusTracker
     /// attempt number continues and lastCommandSeq is kept so old commands are not replayed (design section 8).
     /// The run folder's copy is preferred. If the earlier attempt died before it could copy one, the live
     /// status.json beside the request is used, but only if it belongs to this run.
+    /// <paramref name="disabledReason"/> says why a tool is off (null if on); without it only the request is consulted.
     /// </summary>
     public static async Task<RunStatusTracker> CreateAsync(
         RunPaths paths,
         InvocationPaths invocation,
         RunRequestDocument request,
         TimeProvider? time = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<string, string?>? disabledReason = null)
     {
         var attempt = 1;
         long lastCommandSeq = 0;
@@ -64,7 +67,12 @@ public sealed class RunStatusTracker
             lastCommandSeq = previous.LastCommandSeq;
         }
 
-        return new RunStatusTracker(request, attempt, lastCommandSeq, time ?? TimeProvider.System);
+        return new RunStatusTracker(
+            request,
+            attempt,
+            lastCommandSeq,
+            time ?? TimeProvider.System,
+            disabledReason ?? (tool => ToolEnablement.DisabledReason(request, null, tool)));
     }
 
     private static async Task<StatusDocument?> ReadPreviousAsync(
@@ -259,8 +267,8 @@ public sealed class RunStatusTracker
     private static bool IsFinished(ToolProgress step) => step.Status is
         ToolRunState.Completed or ToolRunState.CompletedWithFlags or ToolRunState.Failed or ToolRunState.Disabled;
 
-    private static ToolProgress InitialStep(string name, RunRequestDocument request) =>
-        request.Tools.TryGetValue(name, out var overrides) && overrides.Enabled == false
-            ? new ToolProgress { Name = name, Status = ToolRunState.Disabled, Message = "disabled in request.json" }
-            : new ToolProgress { Name = name };
+    private static ToolProgress InitialStep(string name, string? disabledReason) =>
+        disabledReason is null
+            ? new ToolProgress { Name = name }
+            : new ToolProgress { Name = name, Status = ToolRunState.Disabled, Message = disabledReason };
 }

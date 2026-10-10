@@ -23,7 +23,7 @@ public abstract class ScanToolBase : ITool
         var loop = new RepoWorkLoop(context, Name, ToolLimits.For(context, Name));
         var work = new RepoWork(
             ScanRepoAsync,
-            repo => RepoEligibility.SkipFor(repo, scanArchived: false, IsApplicable));
+            repo => RepoEligibility.SkipFor(repo, context.Config.Current.ScanArchived, IsApplicable));
 
         return loop.RunAsync(context.Repos.Snapshot(), work, cancellationToken);
     }
