@@ -38,6 +38,6 @@
 // The outcome of each command (Applied, Rejected or Ignored) is shown in status.json under "commandAcks".
 {
   "schemaVersion": 3,
-  "runId": "test4",
+  "runId": "test5",
   "commands": []
 }

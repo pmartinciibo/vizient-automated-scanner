@@ -2,6 +2,7 @@ using Vizient.AutomatedScanner.Core.Configuration;
 using Vizient.AutomatedScanner.Core.Control;
 using Vizient.AutomatedScanner.Core.IO;
 using Vizient.AutomatedScanner.Core.Models;
+using Vizient.AutomatedScanner.Core.Processes;
 using Vizient.AutomatedScanner.Core.Serialization;
 using Vizient.AutomatedScanner.Core.Status;
 using Vizient.AutomatedScanner.Core.Tools;
@@ -22,7 +23,8 @@ public sealed record RunContext(
     MarkerStore Markers,
     RunControl Control,
     RepoReport Repos,
-    CommandLog Commands)
+    CommandLog Commands,
+    IProcessRunner Processes)
 {
     /// <summary>A tool is enabled unless the request says otherwise.</summary>
     public bool IsEnabled(string tool) =>
@@ -70,7 +72,7 @@ public sealed record RunContext(
 
         Directory.CreateDirectory(paths.RunFolder);
         await AtomicJsonFile.CopyAsync(requestPath, paths.Request, cancellationToken);
-        return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands);
+        return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands, new ProcessRunner());
     }
 
     private static void ValidateRequest(RunRequestDocument request)

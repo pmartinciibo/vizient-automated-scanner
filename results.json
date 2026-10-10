@@ -1,12 +1,12 @@
 {
   "schemaVersion": 3,
-  "runId": "test4",
+  "runId": "test5",
   "requestFile": "C:\\envs\\Vizient\\AutomatedScanner\\request.json",
-  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\test4",
+  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\test5",
   "state": "Completed",
   "exitCode": 0,
-  "startedAt": "2026-10-10T19:27:51.3350121+00:00",
-  "endedAt": "2026-10-10T19:27:51.4726017+00:00",
+  "startedAt": "2026-10-10T19:42:17.6826964+00:00",
+  "endedAt": "2026-10-10T19:42:17.823344+00:00",
   "error": null,
   "tools": [
     {

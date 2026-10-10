@@ -11,7 +11,8 @@ public static class AtomicJsonFile
 
     /// <summary>
     /// Reads a JSON file. // and /* */ comments and trailing commas are tolerated, so a file the invoker
-    /// edits by hand (command.json) can carry notes.
+    /// edits by hand (command.json) can carry notes. The file is opened so that someone else can still
+    /// replace it while it is being read; otherwise a reader could make a writer's rename fail.
     /// </summary>
     public static async Task<T> ReadAsync<T>(string path, CancellationToken cancellationToken = default)
     {
@@ -19,7 +20,7 @@ public static class AtomicJsonFile
             path,
             FileMode.Open,
             FileAccess.Read,
-            FileShare.Read,
+            FileShare.ReadWrite | FileShare.Delete,
             bufferSize: 4096,
             useAsync: true);
 
@@ -67,7 +68,7 @@ public static class AtomicJsonFile
         CancellationToken cancellationToken = default)
     {
         await using var source = new FileStream(
-            sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+            sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, bufferSize: 4096, useAsync: true);
 
         await ReplaceAsync(destinationPath, target => source.CopyToAsync(target, cancellationToken), cancellationToken);
     }
