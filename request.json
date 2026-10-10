@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 3,
+  "runId": "test4",
+  "revision": 1,
+  "requestedAt": "2026-10-10T12:00:00+00:00",
+  "requestedBy": "dev",
+  "mode": "Normal",
+  "tools": {
+    "Snyk": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    }
+  },
+  "scope": {
+    "includeRepos": [],
+    "excludeRepos": []
+  },
+  "skip": {
+    "canaryPercent": 5
+  }
+}

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Vizient.AutomatedScanner.Core.Models;
@@ -8,6 +9,10 @@ public static class AtomicJsonFile
 {
     private static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
 
+    /// <summary>
+    /// Reads a JSON file. // and /* */ comments and trailing commas are tolerated, so a file the invoker
+    /// edits by hand (command.json) can carry notes.
+    /// </summary>
     public static async Task<T> ReadAsync<T>(string path, CancellationToken cancellationToken = default)
     {
         await using var stream = new FileStream(
@@ -22,10 +27,56 @@ public static class AtomicJsonFile
         return value ?? throw new InvalidDataException($"The JSON file '{path}' contains null.");
     }
 
-    public static async Task WriteAsync<T>(
+    public static Task WriteAsync<T>(
         string path,
         T value,
+        CancellationToken cancellationToken = default) =>
+        ReplaceAsync(
+            path,
+            stream => JsonSerializer.SerializeAsync(stream, value, SerializerOptions, cancellationToken),
+            cancellationToken);
+
+    /// <summary>
+    /// Writes the value as JSON with comment lines above it. Each line of <paramref name="commentLines"/>
+    /// becomes a // comment. <see cref="ReadAsync{T}"/> skips them.
+    /// </summary>
+    public static Task WriteWithCommentsAsync<T>(
+        string path,
+        T value,
+        IEnumerable<string> commentLines,
+        CancellationToken cancellationToken = default) =>
+        ReplaceAsync(
+            path,
+            async stream =>
+            {
+                var header = new StringBuilder();
+                foreach (var line in commentLines)
+                {
+                    header.Append(line.Length == 0 ? "//" : "// " + line).Append('\n');
+                }
+
+                await stream.WriteAsync(new UTF8Encoding(false).GetBytes(header.ToString()), cancellationToken);
+                await JsonSerializer.SerializeAsync(stream, value, SerializerOptions, cancellationToken);
+            },
+            cancellationToken);
+
+    /// <summary>Copies a file with the same temp-file-then-rename guarantee as <see cref="WriteAsync{T}"/>.</summary>
+    public static async Task CopyAsync(
+        string sourcePath,
+        string destinationPath,
         CancellationToken cancellationToken = default)
+    {
+        await using var source = new FileStream(
+            sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+
+        await ReplaceAsync(destinationPath, target => source.CopyToAsync(target, cancellationToken), cancellationToken);
+    }
+
+    // Writes to a temp file beside the target, flushes it to disk, then renames it over the target.
+    private static async Task ReplaceAsync(
+        string path,
+        Func<FileStream, Task> write,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -48,7 +99,7 @@ public static class AtomicJsonFile
                 bufferSize: 4096,
                 useAsync: true))
             {
-                await JsonSerializer.SerializeAsync(stream, value, SerializerOptions, cancellationToken);
+                await write(stream);
                 await stream.FlushAsync(cancellationToken);
                 stream.Flush(flushToDisk: true);
             }
@@ -68,7 +119,9 @@ public static class AtomicJsonFile
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
-            WriteIndented = true
+            WriteIndented = true,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true
         };
         options.Converters.Add(new RunPhaseJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter());

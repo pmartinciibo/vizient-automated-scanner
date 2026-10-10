@@ -4,7 +4,7 @@ public sealed class Rapid7Import : ITool
 {
     public string Name => "Rapid7";
 
-    public Task RunAsync(CancellationToken cancellationToken = default)
+    public Task RunAsync(RunContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"I am {Name}: imports Rapid7 results.");
         return Task.CompletedTask;

@@ -4,6 +4,8 @@ public sealed record EngineConfigDocument
 {
     public int SchemaVersion { get; init; } = 3;
     public EnginePathsConfig Paths { get; init; } = new();
+    public int StatusIntervalSeconds { get; init; } = 5;
+    public int CommandIntervalSeconds { get; init; } = 2;
 }
 
 public sealed record EnginePathsConfig

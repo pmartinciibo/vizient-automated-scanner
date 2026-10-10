@@ -1,0 +1,43 @@
+// command.json: send commands to the scan engine while a run is going.
+// The engine reads this file every few seconds and applies each new command.
+//
+// How to send a command:
+//   - Add an entry to "commands" and save the file. Write the whole file at once
+//     (write a temporary file, then rename it over this one).
+//   - "seq" must be higher than every earlier command for this run and is never reused.
+//     The engine applies only commands with a seq above the last one it has seen.
+//   - "runId" must match the run, or the engine ignores the file.
+//   - "id", "issuedAt" (UTC, ISO-8601) and "issuedBy" are for the record.
+//   - Leave earlier commands in the file. Ones already applied are skipped.
+//   - Lines starting with // are comments and are allowed.
+//
+// Supported commands ("type", then its "args"):
+//   Pause           Finish repos in progress, start no new ones, and hold.
+//                   args: none
+//   Resume          Continue after a Pause.
+//                   args: none
+//   Stop            Finish repos in progress, then end the run as Stopped.
+//                   args: none
+//   Abort           Stop now: kill running tools and end the run as Stopped.
+//                   args: none
+//   SetConcurrency  Change how many repos a tool works on at once.
+//                   args: tool (a tool name, or "all"), maxParallel (a whole number, 1 to 256)
+//   DisableTool     Start no new work for a tool.
+//                   args: tool, reason (optional)
+//   RetryFailed     Requeue the repos that failed in this run.
+//                   args: tool (optional, leave out for every tool)
+//   SkipRepo        Drop one repo from all the work that remains.
+//                   args: repoKey, for example "gh-91234"
+//
+// Tool names: Rapid7, CheckMarx, RepoClone, TruffleHog, Semgrep, Snyk, SonarStandard, SonarDotNet
+//
+// Example entry:
+//   { "seq": 1, "id": "b7e1-0001", "type": "SetConcurrency", "issuedAt": "2026-10-14T04:30:00Z",
+//     "issuedBy": "phil", "args": { "tool": "TruffleHog", "maxParallel": 3 } }
+//
+// The outcome of each command (Applied, Rejected or Ignored) is shown in status.json under "commandAcks".
+{
+  "schemaVersion": 3,
+  "runId": "test4",
+  "commands": []
+}

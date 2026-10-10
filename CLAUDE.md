@@ -74,7 +74,7 @@ in and out communication path.
 ```
 dotnet build
 dotnet test
-dotnet run --project src/Engine -- run --run-folder <path>
+dotnet run --project src/Engine -- run --request <path to request.json>
 ```
 
 ## Suggested build order

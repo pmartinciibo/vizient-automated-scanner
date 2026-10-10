@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 3,
+  "runId": "test4",
+  "revision": 1,
+  "attempt": 1,
+  "state": "Completed",
+  "paused": false,
+  "pid": 24820,
+  "mode": "Normal",
+  "startedAt": "2026-10-10T19:27:51.3350121+00:00",
+  "updatedAt": "2026-10-10T19:27:51.4735424+00:00",
+  "endedAt": "2026-10-10T19:27:51.4726017+00:00",
+  "phase": "Finalize",
+  "overall": {
+    "percent": 100,
+    "stepsCompleted": 8,
+    "stepsTotal": 8
+  },
+  "steps": [
+    {
+      "name": "Rapid7",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    },
+    {
+      "name": "CheckMarx",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    },
+    {
+      "name": "RepoClone",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    },
+    {
+      "name": "TruffleHog",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    },
+    {
+      "name": "Semgrep",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    },
+    {
+      "name": "Snyk",
+      "status": "Disabled",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": "disabled in request.json"
+    },
+    {
+      "name": "SonarStandard",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    },
+    {
+      "name": "SonarDotNet",
+      "status": "Completed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": null
+    }
+  ],
+  "effective": {},
+  "alerts": [],
+  "lastCommandSeq": 0,
+  "commandAcks": []
+}

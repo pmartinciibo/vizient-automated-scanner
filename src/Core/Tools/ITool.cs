@@ -4,5 +4,5 @@ public interface ITool
 {
     string Name { get; }
 
-    Task RunAsync(CancellationToken cancellationToken = default);
+    Task RunAsync(RunContext context, CancellationToken cancellationToken = default);
 }

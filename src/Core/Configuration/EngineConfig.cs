@@ -10,7 +10,9 @@ public sealed record EngineConfig(
     string RunsRoot,
     string StateRoot,
     string TmpRoot,
-    string LogsRoot)
+    string LogsRoot,
+    int StatusIntervalSeconds = 5,
+    int CommandIntervalSeconds = 2)
 {
     public const string FileName = "engine.json";
 
@@ -30,13 +32,20 @@ public sealed record EngineConfig(
         var baseDir = Path.GetDirectoryName(fullPath)!;
         var paths = document.Paths;
 
+        if (document.StatusIntervalSeconds < 1 || document.CommandIntervalSeconds < 1)
+        {
+            throw new InvalidDataException($"{FileName}: statusIntervalSeconds and commandIntervalSeconds must be at least 1.");
+        }
+
         return new EngineConfig(
             fullPath,
             Resolve(baseDir, paths.ReposRoot, nameof(paths.ReposRoot)),
             Resolve(baseDir, paths.Runs, nameof(paths.Runs)),
             Resolve(baseDir, paths.State, nameof(paths.State)),
             Resolve(baseDir, paths.Tmp, nameof(paths.Tmp)),
-            Resolve(baseDir, paths.Logs, nameof(paths.Logs)));
+            Resolve(baseDir, paths.Logs, nameof(paths.Logs)),
+            document.StatusIntervalSeconds,
+            document.CommandIntervalSeconds);
     }
 
     /// <summary>Creates any folder the engine writes into.</summary>

@@ -4,7 +4,7 @@ public sealed class TruffleHogTool : ITool
 {
     public string Name => "TruffleHog";
 
-    public Task RunAsync(CancellationToken cancellationToken = default)
+    public Task RunAsync(RunContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"I am {Name}: scans repos for secrets.");
         return Task.CompletedTask;

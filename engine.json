@@ -6,5 +6,7 @@
     "state": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\state",
     "tmp": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\tmp",
     "logs": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\logs"
-  }
+  },
+  "statusIntervalSeconds": 5,
+  "commandIntervalSeconds": 2
 }

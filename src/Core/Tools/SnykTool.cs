@@ -4,7 +4,7 @@ public sealed class SnykTool : ITool
 {
     public string Name => "Snyk";
 
-    public Task RunAsync(CancellationToken cancellationToken = default)
+    public Task RunAsync(RunContext context, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"I am {Name}: scans code and dependencies.");
         return Task.CompletedTask;

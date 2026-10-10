@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 3,
+  "runId": "test4",
+  "requestFile": "C:\\envs\\Vizient\\AutomatedScanner\\request.json",
+  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\test4",
+  "state": "Completed",
+  "exitCode": 0,
+  "startedAt": "2026-10-10T19:27:51.3350121+00:00",
+  "endedAt": "2026-10-10T19:27:51.4726017+00:00",
+  "error": null,
+  "tools": [
+    {
+      "name": "Rapid7",
+      "status": "Completed",
+      "message": null
+    },
+    {
+      "name": "CheckMarx",
+      "status": "Completed",
+      "message": null
+    },
+    {
+      "name": "RepoClone",
+      "status": "Completed",
+      "message": null
+    },
+    {
+      "name": "TruffleHog",
+      "status": "Completed",
+      "message": null
+    },
+    {
+      "name": "Semgrep",
+      "status": "Completed",
+      "message": null
+    },
+    {
+      "name": "Snyk",
+      "status": "Disabled",
+      "message": "disabled in request.json"
+    },
+    {
+      "name": "SonarStandard",
+      "status": "Completed",
+      "message": null
+    },
+    {
+      "name": "SonarDotNet",
+      "status": "Completed",
+      "message": null
+    }
+  ],
+  "repoTotals": {
+    "total": 0,
+    "existedLocally": 0,
+    "existedRemotely": 0,
+    "updatedLocally": 0,
+    "archivedOrRetired": 0
+  },
+  "orgs": []
+}
