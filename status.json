@@ -1,15 +1,15 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-10T22-13-12Z",
+  "runId": "2026-10-10T22-32-10Z",
   "revision": 1,
   "attempt": 1,
   "state": "Completed",
   "paused": false,
-  "pid": 8104,
+  "pid": 21744,
   "mode": "Normal",
-  "startedAt": "2026-10-10T22:13:12.5103632+00:00",
-  "updatedAt": "2026-10-10T22:13:14.5121824+00:00",
-  "endedAt": "2026-10-10T22:13:14.5108825+00:00",
+  "startedAt": "2026-10-10T22:32:10.7564653+00:00",
+  "updatedAt": "2026-10-10T23:03:41.357244+00:00",
+  "endedAt": "2026-10-10T23:03:41.3557349+00:00",
   "phase": "Finalize",
   "overall": {
     "percent": 100,
@@ -20,8 +20,8 @@
     {
       "name": "Rapid7",
       "status": "Completed",
-      "done": 117,
-      "total": 117,
+      "done": 160,
+      "total": 160,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
@@ -116,7 +116,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:13:12.5712638+00:00"
+      "at": "2026-10-10T22:32:10.8193086+00:00"
     },
     {
       "type": "MissingSecret",
@@ -126,7 +126,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:13:12.5712638+00:00"
+      "at": "2026-10-10T22:32:10.8193086+00:00"
     },
     {
       "type": "MissingSecret",
@@ -136,7 +136,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:13:12.5712638+00:00"
+      "at": "2026-10-10T22:32:10.8193086+00:00"
     },
     {
       "type": "MissingSecret",
@@ -146,7 +146,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:13:12.5712638+00:00"
+      "at": "2026-10-10T22:32:10.8193086+00:00"
     },
     {
       "type": "MissingSecret",
@@ -156,7 +156,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:13:12.5712638+00:00"
+      "at": "2026-10-10T22:32:10.8193086+00:00"
     }
   ],
   "lastCommandSeq": 0,
