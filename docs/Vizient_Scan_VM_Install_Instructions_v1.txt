@@ -1,0 +1,188 @@
+================================================================================
+VIZIENT SCAN ENGINE - SERVER VM INSTALL INSTRUCTIONS
+Windows Server 2025 VM, 32 vCPU, 128 GB
+Draft v1 - October 2026
+================================================================================
+
+NOTE ON VERSIONS
+  Version numbers and download URLs for Windows Server 2025 have not been
+  verified. Check each vendor's documentation. Record every version you install;
+  the versions go into the "version" fields in engine.json.
+
+VOLUME MAP
+  C:  Windows (128 GB)   programs, config, tools, logs
+  D:  Repos   (500 GB)   repo clones, run folders, state, temp
+  E:  Database (100 GB)  PostgreSQL data (used here for SonarQube's database)
+  F:  Sonar   (100 GB)   SonarQube server
+
+
+--------------------------------------------------------------------------------
+0. BEFORE YOU START
+--------------------------------------------------------------------------------
+
+  Administrator access to the VM; PowerShell.
+
+  Accounts
+    - Create local accounts:
+        svc-scanner     runs the Engine
+        svc-buildtools  locked-down account for Snyk and SonarDotNet
+
+  Network access (request outbound allowlisting for):
+    - GitHub (API and releases) and dev.azure.com
+    - your Snyk, Rapid7, and CheckMarx endpoints
+    - PyPI, nuget.org, and any private NuGet feeds
+    - semgrep.dev (rule registry), or vendor the rules locally
+    - SonarSource downloads and Microsoft .NET downloads
+
+  Windows long paths
+    Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1
+
+  Antivirus
+    - Ask for real-time scan exclusions for D:\Repos, D:\Scanner, and
+      F:\SonarQube so scanning is not slowed.
+
+
+--------------------------------------------------------------------------------
+1. FOLDERS AND PERMISSIONS
+--------------------------------------------------------------------------------
+
+  New-Item -ItemType Directory -Force C:\Scanner\bin\engine, C:\Scanner\config\shared, C:\Scanner\secrets, C:\Scanner\ops, C:\Scanner\logs, C:\Tools
+  New-Item -ItemType Directory -Force D:\Repos, D:\Scanner\state, D:\Scanner\runs, D:\Scanner\tmp, D:\Scanner\sonar-work
+  New-Item -ItemType Directory -Force E:\PostgreSQL, F:\SonarQube
+
+  Permissions
+    - svc-scanner:    modify on D:\Repos and D:\Scanner
+                      read on C:\Scanner\bin, C:\Scanner\config, C:\Tools
+    - C:\Scanner\secrets: svc-scanner read/write; no one else except
+                      Administrators
+    - svc-buildtools: modify on D:\Scanner\sonar-work only
+                      read on C:\Tools and the repo folders it scans
+    - Set TEMP and TMP for svc-scanner to D:\Scanner\tmp so C: does not fill.
+
+
+--------------------------------------------------------------------------------
+2. GIT FOR WINDOWS  (C:\Program Files\Git)
+--------------------------------------------------------------------------------
+
+  - Install system-wide.
+  - Then:
+      git config --system core.longpaths true
+      git config --system credential.helper ""
+  - If Git complains about ownership, add D:\Repos\* as a safe directory for
+    the service account.
+
+
+--------------------------------------------------------------------------------
+3. .NET  (C:)
+--------------------------------------------------------------------------------
+
+  - Install the .NET SDK for the version Vizient's code needs (the SDK, not
+    only the runtime), plus the runtime the Engine targets.
+  - Install the Sonar .NET scanner into the tools folder:
+      dotnet tool install dotnet-sonarscanner --tool-path C:\Tools\dotnet-tools
+
+
+--------------------------------------------------------------------------------
+4. SEMGREP  (C:\Tools\semgrep-venv)
+--------------------------------------------------------------------------------
+
+  - Install Python (use the version your current Windows machine uses), then:
+      python -m venv C:\Tools\semgrep-venv
+      C:\Tools\semgrep-venv\Scripts\pip install semgrep
+  - Set SEMGREP_SEND_METRICS=off for the service account.
+  - It already ran on your Windows laptop through pip or pipx; use that same
+    version.
+  - Pinned rule packs need registry access at runtime, or vendor them locally.
+
+
+--------------------------------------------------------------------------------
+5. TRUFFLEHOG  (C:\Tools\trufflehog)
+--------------------------------------------------------------------------------
+
+  - Download the Windows build from the TruffleHog GitHub releases.
+  - Extract trufflehog.exe to C:\Tools\trufflehog and verify its checksum.
+
+
+--------------------------------------------------------------------------------
+6. SNYK CLI  (C:\Tools\snyk)
+--------------------------------------------------------------------------------
+
+  - Download the standalone Windows executable from Snyk (or install with npm
+    using a tools prefix) and place it in C:\Tools\snyk.
+  - Do not run "snyk auth" interactively. The Engine passes SNYK_TOKEN from the
+    secret store.
+
+
+--------------------------------------------------------------------------------
+7. POSTGRESQL  (data on E:\PostgreSQL)
+--------------------------------------------------------------------------------
+
+  SonarQube needs an external database, and the volume plan puts it on E:.
+
+  - Install PostgreSQL with the data directory E:\PostgreSQL\data.
+  - Create a database and user named "sonarqube".
+  - Bind it to localhost only.
+  - Decide whether this is the same server that will later hold the scan
+    database.
+
+
+--------------------------------------------------------------------------------
+8. SONARQUBE SERVER  (F:\SonarQube)
+--------------------------------------------------------------------------------
+
+  - Install the Java version required by the SonarQube version you choose
+    (usually 17 or 21).
+  - Unzip SonarQube to F:\SonarQube.
+  - Edit conf\sonar.properties:
+      - set sonar.jdbc.url, username, and password for the PostgreSQL database
+      - set sonar.path.data, sonar.path.temp, and sonar.path.logs to folders
+        under F:\SonarQube
+      - set the web, compute-engine, and search JVM sizes (for example 2 GB,
+        8 GB, and 8 GB on a 128 GB host)
+      - bind sonar.web.host to 127.0.0.1, port 9000
+  - Run it as a Windows service under a dedicated non-admin account. Use the
+    service scripts if your version ships them, or NSSM.
+  - Log in once and:
+      - change the default password
+      - create the quality profile you will pin
+      - generate a scanner token for the secret store
+  - Check the edition and its compute-engine worker count (it drives
+    throughput).
+
+
+--------------------------------------------------------------------------------
+9. SONAR SCANNER CLI  (C:\Tools\sonar-scanner)
+--------------------------------------------------------------------------------
+
+  - Unzip the Windows CLI there. Recent builds bundle their own Java.
+  - Set the server URL to http://localhost:9000.
+
+
+--------------------------------------------------------------------------------
+10. ENGINE
+--------------------------------------------------------------------------------
+
+  - Copy the build to C:\Scanner\bin\engine.
+  - Put engine.json and exclusions.txt in C:\Scanner\config.
+  - As svc-scanner, load the secrets (see the design document), then run:
+      engine secrets check
+  - Create the Task Scheduler jobs:
+      - Monday and Thursday at 3 AM
+      - run as svc-scanner
+      - "Run whether user is logged on or not"
+      - do not start a second instance
+
+
+--------------------------------------------------------------------------------
+11. SMOKE TESTS  (as the service accounts)
+--------------------------------------------------------------------------------
+
+  - Run --version on each tool and confirm each opens.
+  - Clone one small repo and run each tool on it.
+  - Run one .NET repo through SonarDotNet under svc-buildtools.
+  - Confirm "engine run" on a pilot scope (a few repos) writes the expected
+    files.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

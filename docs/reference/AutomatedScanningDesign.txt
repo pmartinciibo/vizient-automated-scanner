@@ -1,0 +1,583 @@
+I need some feedback on the scope for the automated scanning work (i.e. which ones are in-scope for this SOW?):
+1. Twice each week:
+	a. Import Rapid7 and CheckMarx findings delta
+	b. Update all ADO and GitHub repos to local disk
+	c. Scan all repos using TruffleHog, Semgrep, Snyk, Sonar and Sonar for .Net, and dedup findings
+	d. Aggregate all findings into a common database for analysis and reporting
+2. Provide a web UI:
+	a. Tracks application and repository ownership
+	b. Leverages Okta SSO to restrict visible applications and repositories based on owner mapping in a.
+	c. Allows general browsing of scans by scan date (scan->application->repository->findings)
+	d. Provide an AI text interface so users can request results by specifying filtering and sorting criteria, along with result formatting (this replaces canned reports). Example:
+		"Show me all secrets in the 'sso-cdc-sync' repo that were found after august 2026, and that are high or critical, and have not been remediated. Show only those that have 'db_pass' somewhere in the text. Sort the results by date found with the most recent at top."
+		**This sounds complicated but it actually is not that hard to implement - maybe 3 days to get it going, whereas continually adding and tweaking reports can be a non-ending time blackhole
+3. Validate all new findings (this is an external process using Claude that produces a JON result file that is then imported back into the application)
+4. Generate a Risk score per vulnerability (Risk = Criticality + Likelihood + Impact)
+5. Generate a Security Health score per application and repo representing overall security posture
+6. Owners can request new findings to be automatically emailed after each run.
+7. Dashboard (temporary pane of glass) - per owner, application or repository
+	a. Score
+	b. Burn-down chart showing historical values (each X-Axis point is a scan date):
+		Score over time
+		# Critical and High vulnerabilities over time
+		# Total vulnerabilities over time
+		# new critical and high vulnerabilities over time
+		Forecasted date when all high and critical vulnerabilities will be addressed based on current burn-down
+		Top 10 vulnerabilities needing remediation (based on Risk score)
+8. Aggregate all secrets across repos, so we can tag a specific secret that needs to be rotated to all affected applications and repos. This will be required to ensure we remediate all affected repos simultaneously when we rotate the secret.
+
+
+
+
+
+
+
+
+I need to create an automated scanning solution that twice each week:
+1. Updates repos on-disk from both ADO and GitHub (non-mirrored)
+2. Scans all repos using our 4 tools and stores the results in a local SQL Server database
+3. Updates our list of findings from Rapid7 and CheckMarx in the local SQL Server database
+This solution should be .Net based, and provide a simple MVC web app to monitor scan jobs and be able to slice/dice findings. It will be hosted on a Windows VM.
+
+Based on previous work in this project, give me a proposal of how this would work. Give me a delta of what we need vs. what we have.
+
+
+
+
+Local Database connection string = "Server=localhost\SQLEXPRESS;Database=master;Trusted_Connection=True;"
+
+
+
+		
+
+1) It will be hosted on a Vizient-supplied VM with the following specs:
+	a. Operating System: Windows 11 Enterprise
+	b. Storage: 900GB split across 4 volumes:
+		1) 128GB OS, standard SSD
+		2) 500GB Repos, fast SSD (NVMe if possible)
+		3) 100GB PostGreSQL Database, fast SSD (NVMe if possible), isolated from the Repos volume for I/O contention, with a robust snapshot/backup policy
+		4) 100GB Sonar partition, fast SSD (NVMe if possible)
+	c. Compute: 32 vCPUs
+	d. Memory: 128GB
+2) It will execute on Mondays and Thursdsays starting at 3AM (allow 24 hours for each run to complete):
+	a. It will import Rapid7 and CheckMarx data via respective APIs into an internal database.
+	b. It will run the following tools
+		1. TruffleHog
+		2. Semgrep
+		3. Snyk
+		4. SonarQube (both standard and .Net versions)
+3) The application will track the following:
+	a. Applications and repos for each application
+	b. Owners for each application and repo
+	c. Scans and findings for each scan, with the ability to filter on:
+		1. Owner
+		2. Application/repo
+		3. Tool (Rapid7, CheckMarx, TrufffleHog, Semgrep, Snyk, Sonar)
+		4. Criticality (Critical, High, Moderate, Low, Information)
+		5. Vulnerability status (Unreviewed, Validated, False Positive, Remediated, Ignored)
+		6. Type of vulnerability (Secret, DAST, SAST, Dependancy, Code Quality, etc.)
+4.a) Create a "this is the riskiest vulnerability" score:
+	Likelihood:
+		Tool scan type (dynamic vs. static)
+		CVSS Vector
+		Verified
+		Reappearance
+	Damage (assigned to each application)
+		DataSensitivity - PHI/PII/Financial?
+		Business Criticality - business-facing vs. internal-facing?
+		Is exposed to internet?
+	Risk = Criticality + Likelihood + Impact
+4.b) Create a score per applicaiton and per repo that represents the overall security health from both a static and dynamic viewpoint
+	Factors to consider:
+		a. # vulnerabilities and criticality
+		b. Aging
+		c. New vs. existing vulnerabilities
+		d. Escaped vulnerabilities (discovered with dynamic testing)
+		e. Bypassed vulnerabilities (static that were not addressed)
+5) Based on .Net MVC app based on a good mobile-friendly front end framework, middle-tier REST-based web services, and SQL server for the database. The default namespace will be 'Vizient.AutomatedScanner'.
+6) Embedded authentication (Okta-enabled SSO), authorization (employee permissions), logging and exception-handling framework
+7) Instead of defining packaged reports and views, we will let the user enter an AI prompt:
+	1. The user types in what they want to find and optionally how to format the results (e.g. 'highlight all critical findings' or 'sort the list by date originally found ascending')
+	2. The application generates an AI prompt that includes:
+		a. The SQL schema along with a description of how it operates
+		b. The user's prompt
+		c. Instructions to generate a list of requested entities:
+			Type of entity
+			Fields to include
+			Filter criteria
+			Sort criteria
+		d. Markup template that is data bound to the data results in c.
+	3. The prompt is sent to Claude via the Azure OpenAI Service
+	4. The application generates a SQL statement based on the requested entites and formats the results as JSON
+	5. The JSON and markup template from AI is sent back to the browser
+	6. The browser generates content by feeding the JSON into the markup template and displays it.
+8) We will use HangFire to implement automated job execution
+9) Employees can request automated emails to be generated when a scheduled scan completes with all new findings; this is email notificaiton is set per applications or repository they have access to
+10) Dates are stored in UTC, and converted to the timezone in the browser (local time zone)	
+11) When making decisions if the current user/employee can view:
+	Application - the employee must be assigned to the application as any permission
+	Repository - the employee must be assigned to the repo's application or the repo itself as any permission
+12) When creating pages for the UI, use this standard for all lists and CRUD:
+	Listing entities:
+		The page title is the type of the entity pluralized (e.g. "Employees the title is "Employees")
+		Use virtual paging (load more data as the user scrolls down the page
+		At the top of the page say "Showing 50 of 621" and as we load more data change the "showing" value
+		When sorting and filtering, we always go back to the server to sort/filter the entire list - not what is loaded into the browser.
+		When displaying each column:
+			Text - show the actual value, but truncate to 80 characters if needed followed elipse (3 dots)
+			Dates
+				If the field name ends in "At" format as "yyyy/MM/dd HH:mm" (24-hour time)
+				If the field name ends in "On" format as "yyyy/MM/dd"
+			Enumerated values - show the text, not the numerical value
+			Bitwise - show a comma-delimited list of the text values, with the smallest numerical value first and largest at the end
+			Number - if ABS(value) is
+				<= 999 format as whole number with thousands commas
+				between 1000 and 999999 - divide by 1000, round, and add "K" (e.g. 194002 is shown as "194K, 731700 is shown as "732K")
+				between 1000000 and 999999999 - divide by 1000000, round, and add "M" (e.g. 19400200 is shown as "19.4M, 731700000 is shown as "732M")
+		Each column:
+			Is sortable, when the column background is clicked, where the sorting logic depends on the type of value in the column:
+				Text is the usual sort
+				Enums are sorted by thier text value (not numerical)
+				Numbers are sorted by thier numerical value
+				Bitwise values are sorted by thier
+				Dates - sort by the numerical date/time value
+				Clicking on a column not currently used to sort will show the values in ascending order. Clicking on a column alrteady being used for sort will toggle between ascending and descending. A small arrow on the right of the column area should indicate the sort direction.
+			If filterable by a popup filter dialog when the column text is clicked (when a column is being used to filter the list, underline the column text)
+				More than one filter can be applied at a time. if a filter is applied, show a "Remove Filters" button at the top of the list.
+				When filtering on a text columns accept text for which all rows:
+					Match case-insensitive and use wildcards '%{text}%'
+					If multiple words are present then the column must contain all words in any location (e.g. 'wild card' matches 'many wild and pretty cards')
+				When filtering on an enum or bitwise column provide the user with a popup where they can select one or more values, with a "Select All" at top which toggles the entire value list appopriately
+				When filtering on a numerical column allow the user to enter a starting and ending value so a range filter can be applied, but only a starting value is required; if an endiong value is not provided all rows must match exactly
+				When filtering on a Date column allow the user to provide a starting and ending date range; if only a starting value is provided then the row must match exactly (do not filter on time - date only)
+		If the user can manage the entity and the entity supports Create:
+			Show an "Add" button at the top; when clicked:
+				Show a modal popup dialog allowing the user to enter information for a new entity
+				The buttons are "Save" and "Cancel"
+				When "Save" is clicked, show a wait cursor, and:
+					If the REST call is successful, update the list from the server, but scroll down to where the new entity is and highlight for 2 seconds so the user can find it.
+					If the REST call fails, show an popup error message, and when dismissed, stay on the modal popup dialog for Add.
+		If the user can manage the entity and the entity supports Delete:
+			Show a trashcan icon at the right of each row; clicing on this icon should confirm to the user the delete action and:
+				Show a wait cursor, and:
+					If the REST call succeeds, refresh the list and scroll down to where the entity used to be
+					If the REST call fails, show an popup error message.
+			Show a "Select" button that allows the user to select one or more rows
+			When pressed, this button becomes "Delete" and "Cancel". There is no ability to select all. 
+			When "Delete" is pressed, confirm the action, show a wait cursor AND:
+				If the REST call succeeds, refresh the list and scroll down to where the entity used to be
+				If the REST call fails, show an popup error message, and when dismissed, stay in select mode.
+		Add a "View" icon to the right (just before the Delete icon if it exists) - clicking this allows the user to view the entity in a new page (same tab).
+		If the user clicks anywhere in a row other than the icons to the right, allow the user to view the entity in a new page (same tab).
+	Viewing entities:
+		The page title is "View {entity_type}".
+		Show all properties for the entity in a vertical column with each row being "{property name}:			{property value}"
+		If the user can edit this entity, show an "Edit" button at the top right on the same row as the title.
+		If the user can delete this entity, show a "Delete" button at the top right on the same row as the title.
+		Clicking "edit" puts the page into an edit mode, where the user can change all property values if they are marked as '[EDITABLE]'. The 'Edit' is replaced with 'Save' and and 'Cancel'. When 'Save' is pressed, show the wait cursor, and if the REST call succeeeds, go back to View mode; if it failed stay in edit mode.
+13) Here is a list of UI pages:
+	404 Page
+	Access Denied page
+	Error Page
+	My Profile (FirstName, LastName, EmailAddress)
+		List (Applications/Repositories with access)
+	Employees (EmployeeManagement=CRUD)
+		List (OktaIdentifier, FirstName, LastName, EmailAddress)
+			View (OktaIdentifier, FirstName, LastName, EmailAddress, Status, ReportsToEmployeeId, Permissions)
+	Tool Mapping (ToolMapping=CRUD)
+		List (MappingType, NativeName, InternalName, Application, Repository)
+			View(MappingType, NativeName, InternalName, Application, Repository)
+	Applications (ApplicationRepoManagement=CRUD)
+		List (Name, Status, #Repositories) [Only list applications for which the employee has been assigned]
+			View (Name, Status)
+			List[EmployeeMapping] (Employee.FirstName, Employee.LastName, Employee.EmailAddress, Permission)
+			List[Repositories] (Name, Status, Source, RepoPath, LastScannedAt) [Only list repositories for which the employee has been assigned]
+				View (Name, Status, Source, RepoPath)
+				List[EmployeeMapping] (Employee.FirstName, Employee.LastName, Employee.EmailAddress, Permission)
+	Scans (ScanManagement=CRU)
+		List (StartedAt, CompletedAt, Status)
+			View (StartedAt, CompletedAt, Status[U])
+			List (Applications)
+				List (Repositories)
+					List (ScanToolFindings)
+			List (ToolId)
+				List (Applications)
+					List (Repositories)
+						List (ScanToolFindings)
+	Settings (SettingsManagement=CRUD)
+		List (Name, Value)
+		View (Name, Value)
+	Dashboard (scoped to a single owner (as authorized by Okta), application or repo (as indicated by a query string parameter - the employee must have access to that account/repository)
+		*****************************
+		Overall Score: 83 out of 100
+		
+		# Vulnerabilities																			Score
+		 1,200|																						100
+		 1,000|     *																				80
+		   800|																						60
+		   600|                            *														50
+		   400|                                                               *						20
+		   200|																						10
+		     0--------------------------------------------------------------------------------------0
+				Baseline			Previous Scan (12/3/2026)			Current Scan (12/9/2026)
+				
+		
+		Vulnerabilities		
+			Information			Low			Moderate		High		Critical
+			1,286				129			1,091			49			17
+		
+		Top 5 Vulnerabilities
+		Application		Repo	Name		File		Line #			Description
+		*****************************
+	AI
+		Text Box - users enters text			Previous Prompts - list of previous prompts the user has saved
+		Results - where the results are listed
+14) Behavior:
+	Unexpected Exception during REST call - show a modal popup dialog with the error message, hide the wait cursor, and then return to the previous flow as-is
+	Entering URL for which the current user does not have rights - navigate to the Access Denied page.
+	Entering a URL that is not valid - show the 404 page
+15) Permissions
+	ReadOnly - an employee may view dashboard, and drill-down pages
+	ToolMapping - can CRUD tool mappings (appplicaiton/repository names to internal values)
+	ApplicationRepositoryManagement - can update applications and repositories, but not create or delete
+	EmployeeManagement - can CRUD SSOUsers and employees, as well as perform employee mapping ownwership of applicaitons and repos
+	ScanManagement - cam manage failed scans to restart them
+	SettingsManagement - can CRUD settings
+	ManageSecrets - can view and update secret status
+
+16) Database Schema
+	
+	The [EDITABLE] attribute is applied if a field is editable in the UI
+	The [ENCRYPTED] attribute indicates if the field should eb encrypted
+	{value, value) represents enumerated values
+
+	SSOUsers - maps external SSO users to internal employees
+		Id - primary key
+		OktaIdentifier - the Ota identifier for a user [EDITABLE]
+		EmployeeId - foreign key to Employees
+	ToolMapping - used to map an external tool application or repo identifier to our own internal record
+		Id - primary key
+		ToolId - foreign key to Tools
+		MappingType	 if this record maps to an applicaito or a repository (Application=0, Repository=1) [EDITABLE]
+		NativeName - the unique text identifier in the external tool [EDITABLE]
+		InternalName - should map to either Application.Name or Repository.Name [EDITABLE]
+		ApplicationId - foreign key to Applications [EDITABLE] nullable in case the entry is manually added; during the next scan this value can be inferred
+		RepositoryId - foreign key to Repositories [EDITABLE] - null if MappingType=Application; nullable in case the entry is manually added; during the next scan this value can be inferred
+	Employees - a list of individual employees (optionally representing an SSO user)
+		Id - primary key
+		FirstName [EDITABLE] 
+		LastName [EDITABLE] 
+		EmailAddress [EDITABLE] 
+		Status - allows us to disable access without removing ownership mapping (Disabled, Enabled) [EDITABLE]
+		ReportsToEmployeeId - how org hierarchy is represented; if null the employee does not report to anyone [EDITABLE]
+		Permissions - the permission this employee is assigned when using this application; a bitwise value (None=0, ReadOnly=1, ToolMapping=2, ApplicationRepositoryManagement=4, EmployeeManagement=8, ScanManagement=16, SettingsManagement=32, ManageSecrets=64); to use an Okta identifier must be mapped to an employee with a minimum ReadOnly rights [EDITABLE]
+	EmployeeMapping - the apps and repos an employee is associated with, an app/repo can only be associated with a single unique EmployeeId/EmployeePermission combination (e.g. only one Employee can be responsible)
+		Id - primary key
+		EmployeeId - foreign key to Employees
+		EmployeePermission - what type of relationship this record represents (Accountable, Responsible, Informed, Consulted); allows us to give viewing rights to an employee without assigning direct ownership [EDITABLE] 	
+		ApplicationId - foreign key to Applications [EDITABLE] 
+		RepositoryId - foreign key to Repositories [EDITABLE] nullable
+	Applications - a list of applications; an application can have only a single Employee per EmployeePermission
+		Id - primary key
+		Name - the internal name of an application [EDITABLE]
+		Status - the current status of an application, primarily as discovered thorugh scans (Disabled, Enabled, Missing) [EDITABLE]
+		ScanStatus - a flag set before each scan to track Status (NotFound, Found, New)
+		Criticality - indicates the importance of an app to the org as a whole {Low=0, Moderate=1, High=2}
+	Repositories - a list of repos belonging to a single application; a repo must belong to a exactly one application; a repo can have only a single Employee per EmployeePermission
+		Id - primary key
+		ApplicationId - foreign key to Applications
+		Name - the intername name of the repo; usually the same as RepoPath [EDITABLE]
+		Status - the status of the repo as discovered during scanning (Enabled, Retired, Archived, Missing) [EDITABLE]
+		ScanStatus - used during the scan process to track existence and to set Status (NotFound, Found, New)
+		RepoPath - the path to the repo; unqiue to the Application; set as the repo path as we cloned it [EDITABLE]
+		Source - where the repo lives (ADO, GitHub) [EDITABLE]
+		LastScannedAt - when the repo was last scanned 
+		LastScannedHash - a hash of the entire repo so we can detect changes
+		Score - a calculated score for the repo representing security posture based on the last scan
+	Tools - a list of tools used to execute a scan (Rapid7, CheckMarx, RepoCloning, TruffleHog, Semgrep, Snyk, SonarStandard, SonarDotNet)
+		Id - primary key
+		Name - the display name of the tool [EDITABLE]
+		ScanTypes - the types of scanning the tool is capable of; if Dynamic, we know we cannot map to a repo; if 0 this tool is an internal tool only (bitwise - None=0, DAST=1, SAST=2, SCA=4, CodeQuality=8, Dependancies=16, Secrets=32) [EDITABLE]
+	Scans - a list of scans carried out over time
+		Id - primary key
+		StartedAt - when the scan process started
+		CompletedAt - when the scan process ended (regardless of Status
+		Status - the current or final  state of the scan (Pending, InProgress, Completed, Failed)
+	ScanResults - aggregated metrics for a single scan; if RepositoryId<>null, then the metrcis are for a repository, else if ApplicationId<>null the results are for an application, elese the results are for a scan
+		Id - primary key
+		ScanId - foreign key to Scans
+		ApplicationId - foreign key to Applications (nullable)
+		RepositoryId - foreign key to Repositories (nullable)
+		ResultType - the type of metric this record represents (New, Total, Remediated, Elapsed, Top10)
+		Severity - the metric severity this record represents (Critical, High, Moderate, Low, Information) (nullable)
+		Value - the value of the metric; if ResultType in (New, Total, Remediated) then a count; if ResultType = Elapsed, then the number of minutes; if ResultType = Top10 then the # critical and high vulnerabilities
+		RepositoryPath - if ResultType = Top10 the path to the repo "{Application.Name}/{Repository.Name}"
+		Notes - a text field with additional notes ont he scan outcome; for example, we can record that a given tool failed during this scan
+	ScanTools - the status of each tool used when scanning; there will be the same number of tools per scan as there are rows in Tools
+		Id - primary key
+		ScanId - foreign key to Scans
+		ToolId - foreign key to Tools
+		PercentComplete the progress of the tool in the current scan;integer from 0-100
+		Message - set during scan progress for display updates; also captures the failure message if any
+		StartedAt - when the tool started activity
+		EndedAt - when the tool completed activity
+		Status - the current status of the too;l (Pending, InProgress, Completed, Failed); we will handle partial completed as a failure
+	ScanFindings - represents all new findings for a scan - findings existing before a given scan are not listed in this table; this tal;e also allows us to dedup findings across tools
+		Id - primary key
+		ScanId - foreign key to Scans
+		ToolId - foreign key to Tools
+		UniqueIdentifier - the unique ID assigned to a vulnerability by the tool - if line number changes then this should remain constant
+		FindingId - foreign key to Findings
+		FoundAt - when the tool recorded the finding
+	Findings - all findings associated with an application or application/repo; new records are created only with a new UniqueIdentifier, otherwise LastDetectedAt is updated when found
+		Id - primary key
+		ApplicationId - foreign key to Applications
+		RepositoryId - foreign key to Repositories; nullable in case of a dynamic finding that applies to Applications only
+		LastScanRawExtra - the raw content as reported by the scan tool; used to validate findings later and possibly extract data after the fact
+		SourcePath - file path for SAST, relative URL for DAST
+		LineNumber - optional for DAST
+		Text - the offending content [ENCRYPTED]
+		Message - the reason the finding is a vulnerability
+		Severity - the internal severity of the finding (Critical, High, Moderate, Low, Information) - all tool's unique criticality values will be mapped to this
+		FirstDetectedAt - when the vulnerability was first created
+		LastDetectedAt - when the vulnerability last appeared in a later scan
+		Status - the internal status of the finding	(New, UnReviewed, FalsePositive, Verified, Ignored, Remediated) - we use "New" to indicate the finding is new as of the last scan - when we run the next scan all New findings automatically move to UnReviewed [EDITABLE]
+		ScanStatus - used to represent the internal scan state (NotFound, NotScannedDueToHash, Found, New) used to detect when a vulnerability no longer exists; at scan start set to NotFound, as it is discovered, set to Found, at end of scan update all Status=Remediated for ScanStatus=NotFound; if a repo is not scanned due to the hash not being changed, all findings for that repo with ScanStatus=NotFound are moved to NotScannedDueToHash.
+		Flags - indicates special states for a finding (none=0, Reappeared=1)
+		NativeStatus - a string value of the tool's status because those manage user-mandated statuses as well; we will map our status based on this
+		RemediatedAt - nullable; when a vulnerability can no longer be found, look at history for the file and try to determine who changed it
+		RemediatedByName - nullable; when a vulnerability is set to Remediated, look at history for the file and try to determine who changed it
+		RemediationNotes - nullable- if unable to point to a single remdiated name, note this; if more than one person changed the file, list all names here but use the last person for RemediatedBy
+	FindingHistory - a record is created each time Findings.Status changes so that we can go back in time ans wee what happened; this also allows us to detect when a Finding reappeared and the number of times it reappeared
+		Id - primary key
+		ScanId - foreign key to Scans; nullable if the change is manually made in the UI
+		FindingId - foreign key to Findings
+		RecordedAt - when the Findings.Status was changed
+		NewStatus - the new value of Findings.Status
+	Settings - a list of name/value pairs where settings are stored (the app is hard-coded to the name of a setting as well as the format of the setting value
+		Id - primary key
+		Name [EDITABLE] - no spaces or special characters allowed
+		Value [EDITABLE] - should be formatted as JSON
+	Secrets - a list of unique secrets found during scanning
+		Id - primary key
+		Text - the secret needing to be rotated [ENCRYPTED]
+		Status - whether the secret has been rotaed or not (Exposed=0, Rotated=1)
+	SecretRepositories
+		Id - primary key
+		SecretId - foreign key to Secrets
+		RepositoryId - foreign key to a repository containing this secret
+		
+17) Initial Settings	
+	ScanSchedule - "[{dayOfWeek:'Monday', timeOfDay:'3:00 AM'}, {dayOfWeek:'Thursday', timeOfDay:'3:00 AM'}]" - this controls the execution of jobs
+	
+	ScoreTiers - "[{{name: 'Poor'}, {lowValue: '0'}, {highValue: '40'}}, {{name: 'Fair'}, {lowValue: '41'}, {highValue: '60'}}, {{name: 'Acceptable'}, {lowValue: '61'}, {highValue: '80'}}, {{name: 'Good'}, {lowValue: '81'}, {highValue: '90'}}, {{name: 'Excellent'}, {lowValue: '91'}, {highValue: '100'}}]"
+	
+18) Algorithms:
+
+	ToolScanningLogic(tool)
+		Locate the ScanProgress entry in Settings for this tool (Name = tool name):
+			set scanId = Scan.Id
+			set startedAt = Now
+			set endedAt = null
+			set Status=InProgress
+			set percentComplete=0
+			set message='Scan starting...'
+			Save the Setting
+		Locate the Scan.ScanTool(Name = tool name)
+			set Status=InProgress
+		StartTheScan(tool)
+		In 5% progress increments update the Setting percentComplete and message to reflect the progress
+		If failure:
+			set Setting.Status=Failure
+			set Setting.message to the error message
+			set endedAt=Now
+			Save the Setting
+		If success:
+			set Setting.Status=Success
+			set Setting.message = null
+			set endedAt=Now
+			Save the Setting
+
+	GetApplication(name, isDisabled)
+		Locate the internal Application[Name=name or using ToolMapping]
+		If found:
+			set Application.ScanStatus=Found
+		If !found:
+			Create the Application(Status=Enabled,ScanStatus=New)
+		If isDisabled:
+			set Application.Status=Disabled
+		return Application
+
+	GetApplicationRepository(Application, repoName, repoPath, source, isDisabled)
+		Locate the internal Repository[Application=Application, Name=repoName or using ToolMappping]
+		If found:
+			set Repository.ScanStatus=Found
+		If !found:
+			Create the Repository(ApplicationId=Application.Id,Status=Enabled,ScanStatus=New,RepoPath=repoPath,Source=source,LastScannedAt=Now)
+		If isDisabled:
+			set Repository.Status=Disabled
+		return Repository
+
+	StartTheScan(tool=Rapid7)
+		For each Rapid7.application:
+			Application = GetApplication(Rapid7.application.name, Rapid7.application.status=disabled)
+			For each Vulnerability:
+				ToolFoundVulnerability(tool, Application, null, Vulnerability)
+
+	StartTheScan(tool=CheckMarx)
+		For each CheckMarx.application:
+			Application = GetApplication(CheckMarx.application.name, CheckMarx.application.status=disabled)
+			For each repository:
+				Repository = GetApplicationRepository(Application, repository.name, repository.path, repository.source, repository.status=disabled)
+				For each Vulnerability:
+					ToolFoundVulnerability(tool, Application, Repository, Vulnerability)
+
+	StartTheScan(tool=SemGrep, Snyk, TruffleHog, Sonar Standard and Sonar for .Net)
+		For each Application:
+			For each Repository:
+				Scan the repo: 
+					For each Vulnerability:
+						ToolFoundVulnerability(tool, Application, Repository, Vulnerability)
+
+	ToolFoundVulnerability(tool, Application, Repository, toolFinding)
+		Locate the corresponding Finding where UniqueIdentifier=toolFinding.ID
+		if found:
+			set Finding.ScanStatus=Found
+			If needed, update Finding.Status to the appropriate value to match the scanning tool, and create FindingHistory
+		if !found:
+			Create the Finding for the Application (using ToolMapping to locate our Application) with Status=New, ScanStatus=New
+			Create the FindingHistory
+			Create the ScanToolFinding
+
+	Scanning Logic:
+		1. For each Application:
+			set Application.ScanStatus = NotFound
+			For each Repository in Application.Repositories where Status=Enabled:
+				set Repository.ScanStatus = NotFound
+			For each Finding where Status in (New, UnReviewed):
+				set Finding.ScanStatus=NotFound
+			Create a scan with Status=Pending and StartedAt=Now
+			For each Tool:
+				Create a ScanTool for the Scan with Status=Pending
+		2. Run in parallel:
+			a. ToolScanningLogic(Rapid7)
+			b. ToolScanningLogic(CheckMarx)
+			c. SyncRepos()
+				When finished run in parallel:
+					a. ToolScanningLogic(SemGrep)
+					b. ToolScanningLogic(Snyk)
+					c. ToolScanningLogic(TruffleHog)
+					d. ToolScanningLogic(Sonar Standard)
+					e. ToolScanningLogic(Sonar .Net)
+		3. When all tools have completed:
+			If one failed:
+				set Scan.Status=Failed
+			If all successful:
+				For each Application
+					switch(ScanStatus)
+						NotFound
+							set Application.Status=Missing
+						New
+						Found
+							For each Repository
+								switch(ScanStatus)
+									NotFound
+										set Repository.Status=Missing
+									New
+									Found
+										For each Finding:
+											switch(ScanStatus)
+												NotFound
+													set Status=Remediated
+													Create new FindingHistory
+												Found
+												New
+				set Scan.Status=Success
+			set Scan.CompletedAt=Now
+		4. Deduplify across tools
+			For each Finding in the current Scan:
+				Look for all findings with the same app/repo/file/line number
+					If it appears to be a duplicate:
+						Delete one of the findings, and repoint the entry for the deleted finding in ScanFindings to the other finding
+		5. //Create scan results
+			For each Application
+				For each Repository
+					CreateScanResults(Application, Repository, New, Critical, Findings[ApplicationId=Application.Id,RepositoryId=Repository.Id,])
+
+	* New findings for this scan
+		All ScanToolFindings for ScanTool represent new findings
+	** Remediated findings since last scan
+		All FindingHistory for this Scan where NewStatus=Remediated represent remediated findings
+
+19) Scoped Features
+
+	Base Scanning and Reporting
+		List of Tools
+		List of Applications and Repositories
+		List of Scans
+		List of Findings
+		Progress Over Time
+		Nucleus Export and Upload
+		Tools providing unique finding ID: Yes:[SonarQube, Snyk, Checkmarx, Rapid7] No:[Semgrep, TruffleHog]
+		Tables Required (9):
+			Applications
+			Findings
+			Repositories
+			Scans
+			ScanResults
+			ScanTools
+			Settings
+			Tools
+			ToolMapping
+	Deduplication Across Tools
+		List of Tools Responsible for Findings
+		Tables Required (1):
+			ScanFindings
+	Historical Tracking
+		List of Finding Status Changes
+		Tables Required (1):
+			FindingHistory
+	Secrets Tracking
+		List of Unique Secrets
+		List of Repositories per Secret
+		Tables Required (2):
+			Secrets
+			SecretRepositories
+	Ownership Mapping
+		List of Employees
+		List of Employee ownership of Applications and Repositories
+		Tables Required (2):
+			Employees
+			EmployeeMapping
+	Application Criticality	
+		Adding Criticality to Applications
+	Authentication/Authorization
+		Mapping SSO Identity to Employee
+		Restricting Access Based on Employee
+		Tables Required (1):
+			SSOUsers
+	Application and Repository Scoring
+		Calculated score per repo based on found vulnerabilities during the latest scan; Application score is aggregate of all repository scores weight by size of each repository
+	Auditing
+		Tracking changes to:
+			Employee ownership
+			Finding status
+			Secret status
+			Application and Repository mapping between tools
+		Tracking activity:
+			Employee access
+			Employee viewing of Findings
+			Employee viewing of Secrets
+		Tables Required (1):
+			Logging
+			
+
+	Add owner tracking for applications and repos
+	Add application criticality
+	Write logic to update the repos, including new ones
+	Detect falures and rerun them
+	Track scan results over time
+	Dedup across tools
+	Log activity
+	Secrets?
+

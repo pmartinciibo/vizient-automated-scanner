@@ -1,0 +1,1024 @@
+================================================================================
+VIZIENT SCAN ENGINE - DESIGN DOCUMENT
+Standalone scan engine with a file-based input and output path
+Draft v1 - October 2026
+================================================================================
+
+TABLE OF CONTENTS
+  1. Purpose and scope
+  2. Design principles
+  3. Overall process
+  4. Who writes which file
+  5. File structure on disk
+  6. Input files (how the engine is told what to do)
+  7. Output files (how the engine reports results)
+  8. Real-time status file
+  9. Execution flow for the eight tools
+  10. Run lifecycle, resume, and commands
+  11. Skip logic, canaries, and full rescans
+  12. Secrets
+  13. Retention and cleanup
+  14. Out of scope
+  15. Open items and risks
+
+
+================================================================================
+1. PURPOSE AND SCOPE
+================================================================================
+
+The Scan Engine is one console application. Given a run folder it executes ONE
+scan of the Vizient repository estate and writes raw JSON results, a response
+file describing repository changes, and a real-time status file.
+
+It has no database, no user interface, and no knowledge of any consumer. All
+communication in and out is through files in a run folder.
+
+The eight "tools" the engine runs:
+
+   1. Rapid7          import of dynamic (DAST) findings via the Rapid7 API
+   2. CheckMarx       import of static findings via the CheckMarx API
+   3. RepoClone       discover repos in ADO and GitHub, track their status,
+                      and clone or update them on disk
+   4. TruffleHog      secret scanning
+   5. Semgrep         static analysis
+   6. Snyk            static analysis (Snyk Code) / dependency analysis
+   7. SonarStandard   SonarQube analysis for non-.NET repos
+   8. SonarDotNet     SonarQube analysis for .NET repos (builds the code)
+
+Everything downstream of the raw files (database, reports, spreadsheets,
+Nucleus) is out of scope for this document.
+
+
+================================================================================
+2. DESIGN PRINCIPLES
+================================================================================
+
+ - File-based in and out. An invoker (Task Scheduler wrapper, a script, or a
+   person) writes input files; the engine writes output files. Nothing else.
+ - Single writer per file. Each file is written by exactly one party (see
+   section 4), so there are no write conflicts.
+ - Atomic writes. Any file that is rewritten (status.json, repos.json,
+   command acks) is written to a temp file and then renamed over the target,
+   so a reader never sees a half-written file.
+ - Resumable. All progress that matters is recorded on disk as marker files.
+   Running the engine again on the same run folder continues where it stopped.
+ - Failure isolation. A failure of one repo or one tool is recorded and
+   flagged. It never fails the whole run.
+ - When in doubt, scan. Skip decisions require an exact match of every part of
+   the skip key. Any error or unknown means the repo is scanned.
+ - No secret values on disk in clear text, in any file listed here.
+ - Raw results are kept unmodified. The engine does not normalize severities or
+   map findings to applications or owners.
+
+
+================================================================================
+3. OVERALL PROCESS
+================================================================================
+
+A scan runs Monday and Thursday at 3 AM (configurable). Task Scheduler starts a
+small wrapper script (Start-Scan.ps1). The wrapper:
+
+   a. creates a new run folder  D:\Scanner\runs\<runId>\
+   b. writes request.json into it (what to run, overrides)
+   c. starts:  engine run --run-folder D:\Scanner\runs\<runId>
+
+The engine then:
+
+   PHASE 0  Preflight
+            - validate engine.json and request.json
+            - check secrets (section 12)
+            - take the run lock
+            - write the first status.json
+
+   PHASE 1  (three tools in parallel)
+            - Rapid7:    import applications and findings
+            - CheckMarx: import projects and findings
+            - RepoClone: enumerate ADO and GitHub orgs, compare to the
+                         persistent inventory (repos.json), classify changes,
+                         write repo-changes.json, then clone new repos and
+                         update existing ones (skipping fetches for repos
+                         whose HEAD SHA is unchanged)
+
+   PHASE 2  (five tools in parallel, after RepoClone finishes)
+            - TruffleHog, Semgrep, Snyk, SonarStandard, SonarDotNet
+            - each tool works through the repos it applies to, with its own
+              parallelism limit, timeout, and retry
+            - for each repo and tool, apply the skip rules (section 11)
+
+   PHASE 3  Finish
+            - write the final status.json (terminal state)
+            - persist repos.json (scan state per repo and tool)
+            - release the lock; exit with code 0, 1, or 2
+
+While it runs, the invoker (or a person) can:
+   - read status.json for real-time progress (section 8)
+   - write command.json to pause, stop, change parallelism, retry failures
+     (section 6.3)
+
+When it ends, a consumer reads status.json (terminal state), repo-changes.json,
+and the results folder (section 7).
+
+
+================================================================================
+4. WHO WRITES WHICH FILE
+================================================================================
+
+  File                                   Writer         Reader
+  -------------------------------------  -------------  --------------------
+  config\engine.json                     administrator  engine
+  config\shared\exclusions.txt           administrator  engine
+  secrets\secrets.dat                    engine (via    engine
+                                         "secrets" cmd)
+  runs\<runId>\request.json              invoker        engine
+  runs\<runId>\command.json              invoker        engine
+  runs\<runId>\status.json               engine         invoker, anyone
+  runs\<runId>\repo-changes.json         engine         consumer
+  runs\<runId>\repos.json (snapshot)     engine         consumer
+  runs\<runId>\results\...               engine         consumer
+  state\repos.json (persistent)          engine         engine
+  state\engine.lock                      engine         engine
+
+Exception: the invoker may rewrite request.json only while no engine process is
+running for that run (to resume or retry). See section 10.
+
+
+================================================================================
+5. FILE STRUCTURE ON DISK
+================================================================================
+
+Volumes (Windows Server 2025 VM, 32 vCPU, 128 GB):
+   C:  Windows       128 GB   programs, config, tools, logs (small)
+   D:  Repos         500 GB   repo clones, run folders, state, temp
+   E:  Database      100 GB   not used by the engine
+   F:  Sonar         100 GB   SonarQube server (native Windows install)
+
+C:\Scanner\
+  bin\
+    engine\                          Vizient.Scanner.Engine.exe and libraries
+  config\
+    engine.json                      static settings (section 6.1)
+    shared\
+      exclusions.txt                 common exclusions used by all tools
+    tools\
+      semgrep\packs.json             pinned rule packs (optional)
+      sonar\sonar-defaults.properties
+  secrets\
+    secrets.dat                      DPAPI-encrypted secrets (section 12)
+    secrets.dat.bak                  previous version, same protection
+  ops\
+    Start-Scan.ps1                   create run folder + request.json, start engine
+    Resume-Scan.ps1                  rewrite request.json (Resume), restart engine
+    Send-Command.ps1                 append a command to command.json
+    Get-Status.ps1                   show status.json in readable form
+  logs\
+    engine-<date>.log                engine diagnostics (no secret values)
+
+C:\Tools\
+  trufflehog\trufflehog.exe
+  snyk\snyk.exe
+  sonar-scanner\bin\sonar-scanner.bat
+  semgrep-venv\                      Python virtual environment with semgrep
+  (dotnet SDK and dotnet-sonarscanner are installed system-wide)
+
+D:\Repos\
+  ADO\<org>\<project>\<repo>\        working clone (default branch checked out)
+  GitHub\<org>\<repo>\
+
+D:\Scanner\
+  state\
+    repos.json                       persistent repo inventory + scan state
+    repos.json.bak                   previous version
+    engine.lock                      held while an engine process is running
+  runs\
+    2026-10-14T03-00-00Z\            one folder per scan
+      request.json                   INPUT
+      command.json                   INPUT (optional, mid-run)
+      status.json                    OUTPUT (real-time)
+      repo-changes.json              OUTPUT (response file)
+      repos.json                     OUTPUT (snapshot of inventory for this run)
+      results\
+        Rapid7\
+          r7-<appId>.json            raw findings for one application
+          r7-<appId>.done.json
+          _import.done.json          step-level marker with counts
+        CheckMarx\
+          cx-<projectId>.json
+          cx-<projectId>.done.json
+          _import.done.json
+        RepoClone\
+          <repoKey>.done.json        clone/fetch outcome per repo
+          <repoKey>.failed.json
+          <repoKey>.skipped.json     fetch skipped (HEAD SHA unchanged)
+        TruffleHog\
+          <repoKey>.json             raw tool output
+          <repoKey>.done.json | .failed.json | .skipped.json
+        Semgrep\                     same pattern
+        Snyk\                        same pattern
+        SonarStandard\               same pattern
+        SonarDotNet\                 same pattern
+    2026-10-11T03-00-00Z\            previous run (retained, see section 13)
+  tmp\                               TEMP/TMP for all child tools
+  sonar-work\                        scratch space for SonarDotNet builds
+
+F:\SonarQube\
+  bin, conf, data, extensions, logs, temp   server install (native service)
+
+Naming rules:
+  - runId      = UTC start time, e.g. 2026-10-14T03-00-00Z
+  - repoKey    = <source>-<id>, e.g. ado-3f9c1a2b... or gh-91234
+                 (stable ID based, not name based; short, no special characters)
+  - The Rapid7 and CheckMarx entity keys use the prefixes r7- and cx-.
+
+
+================================================================================
+6. INPUT FILES
+================================================================================
+
+6.0 COMMAND LINE
+
+  engine run --run-folder D:\Scanner\runs\<runId>
+  engine secrets set <name> [--expires <yyyy-mm-dd>] [--stdin]
+  engine secrets list
+  engine secrets remove <name>
+  engine secrets check
+
+  "run" takes only the run folder. Everything else comes from engine.json and
+  request.json. Exit codes for "run": 0 success, 1 completed with flagged
+  failures, 2 fatal (bad config, missing secret, lock held, and so on).
+
+6.1 engine.json  (static configuration, written by an administrator)
+
+{
+  "schemaVersion": 3,
+  "paths": {
+    "reposRoot": "D:\\Repos",
+    "state": "D:\\Scanner\\state",
+    "tmp": "D:\\Scanner\\tmp"
+  },
+  "secrets": {
+    "path": "C:\\Scanner\\secrets\\secrets.dat",
+    "requiredAccount": "DOMAIN\\svc-scanner",
+    "expiryWarnDays": 30
+  },
+  "sources": [
+    { "source": "ADO",    "org": "vizientinc",  "tokenSecret": "ado-pat" },
+    { "source": "GitHub", "org": "RnD-Vizient", "tokenSecret": "github-token" }
+  ],
+  "scanArchived": false,
+  "skip": { "enabled": true, "canaryPercent": 5, "fullRescanEveryDays": 30 },
+  "retry": { "maxAttempts": 2, "backoffSeconds": 60 },
+  "statusIntervalSeconds": 5,
+  "tools": {
+    "Rapid7":    { "enabled": true, "tokenSecret": "rapid7-token",
+                   "baseUrl": "https://example.invalid/api" },
+    "CheckMarx": { "enabled": true, "tokenSecret": "checkmarx-token",
+                   "baseUrl": "https://example.invalid/api" },
+    "RepoClone": { "enabled": true, "maxParallel": 12, "timeoutMinutes": 60,
+                   "longPaths": true },
+    "TruffleHog":    { "enabled": true, "maxParallel": 8, "timeoutMinutes": 30,
+                       "version": "3.x", "rulesVersion": "detectors-3.x",
+                       "mode": "filesystem", "verify": false },
+    "Semgrep":       { "enabled": true, "maxParallel": 8, "timeoutMinutes": 30,
+                       "version": "1.x", "rulesVersion": "p/default@2026-10-01",
+                       "packs": ["p/default", "p/owasp-top-ten", "p/cwe-top-25"] },
+    "Snyk":          { "enabled": true, "maxParallel": 4, "timeoutMinutes": 45,
+                       "version": "1.x", "rulesVersion": "n/a", "mode": "code",
+                       "env": { "SNYK_TOKEN": "snyk-token" },
+                       "runAs": { "account": "DOMAIN\\svc-buildtools",
+                                  "passwordSecret": "buildtools-account-password" } },
+    "SonarStandard": { "enabled": true, "maxParallel": 4, "timeoutMinutes": 60,
+                       "version": "10.x", "rulesVersion": "profile-2026-10-01",
+                       "serverUrl": "http://localhost:9000",
+                       "env": { "SONAR_TOKEN": "sonar-token" } },
+    "SonarDotNet":   { "enabled": true, "maxParallel": 4, "timeoutMinutes": 60,
+                       "version": "10.x", "rulesVersion": "profile-2026-10-01",
+                       "serverUrl": "http://localhost:9000",
+                       "env": { "SONAR_TOKEN": "sonar-token" },
+                       "runAs": { "account": "DOMAIN\\svc-buildtools",
+                                  "passwordSecret": "buildtools-account-password" } }
+  }
+}
+
+  Notes:
+   - Secret VALUES never appear here, only secret NAMES.
+   - "version" and "rulesVersion" are pinned values. They are part of the skip
+     key (section 11).
+   - "configHash" in the skip key is computed by the engine from a tool's
+     settings plus the shared exclusions file.
+   - Snyk with "mode": "dependencies" is never skipped (section 11).
+   - "env" maps an environment variable to a secret name. Only those variables
+     are set for that tool's child processes.
+   - "runAs" is optional. It starts a build-first tool under a locked-down
+     account that cannot read the engine's secrets file.
+
+6.2 request.json  (per-run input, written by the invoker)
+
+{
+  "schemaVersion": 3,
+  "runId": "2026-10-14T03-00-00Z",
+  "revision": 1,
+  "requestedAt": "2026-10-14T03:00:00Z",
+  "requestedBy": "scheduler",
+  "mode": "Normal",
+  "tools": {
+    "Rapid7":        { "enabled": true },
+    "CheckMarx":     { "enabled": true },
+    "RepoClone":     { "enabled": true },
+    "TruffleHog":    { "enabled": true },
+    "Semgrep":       { "enabled": true },
+    "Snyk":          { "enabled": false },
+    "SonarStandard": { "enabled": true,  "maxParallel": 2 },
+    "SonarDotNet":   { "enabled": true }
+  },
+  "scope": {
+    "includeRepos": [],
+    "excludeRepos": []
+  },
+  "skip": { "canaryPercent": 5 }
+}
+
+  Fields:
+   - mode
+       Normal        apply the skip rules (default for scheduled runs)
+       Full          force a full rescan of every eligible repo; ignore skips
+       Resume        continue this run folder; repos/tools with a .done.json
+                     marker are not repeated
+       RetryFailed   continue this run folder; only repos/tools with a
+                     .failed.json marker are repeated
+   - revision        starts at 1; the invoker increments it each time it
+                     rewrites this file to resume or retry
+   - tools           per-run overrides of engine.json (enabled, maxParallel,
+                     timeoutMinutes). Anything omitted uses engine.json.
+   - scope           optional lists of repo keys to include or exclude, for
+                     targeted or pilot runs. Empty means all eligible repos.
+   - skip            optional per-run overrides (for example canaryPercent)
+
+  The engine reads this file once at start (and again on resume).
+
+6.3 command.json  (mid-run input, written by the invoker, optional)
+
+{
+  "schemaVersion": 3,
+  "runId": "2026-10-14T03-00-00Z",
+  "commands": [
+    { "seq": 1, "id": "b7e1-0001", "type": "SetConcurrency",
+      "issuedAt": "2026-10-14T04:30:00Z", "issuedBy": "phil",
+      "args": { "tool": "TruffleHog", "maxParallel": 3 } },
+    { "seq": 2, "id": "c19a-0002", "type": "Pause",
+      "issuedAt": "2026-10-14T04:45:00Z", "issuedBy": "phil", "args": {} },
+    { "seq": 3, "id": "d02f-0003", "type": "Resume",
+      "issuedAt": "2026-10-14T05:11:00Z", "issuedBy": "phil", "args": {} }
+  ]
+}
+
+  Supported commands:
+   Pause           finish in-flight repos, start no new ones, hold
+   Resume          continue after a Pause
+   Stop            graceful: finish in-flight repos, then exit as Stopped
+   Abort           kill all child process trees now, then exit as Stopped
+   SetConcurrency  args: tool (or "all"), maxParallel
+   DisableTool     args: tool, reason. Start no new repos for that tool.
+   RetryFailed     args: optional tool. Requeue repos with .failed.json markers
+                   in this run (attempt count is reset)
+   SkipRepo        args: repoKey. Drop that repo from all remaining work
+
+  Rules:
+   - seq increases strictly and is never reused. The invoker keeps old commands
+     and rewrites the whole file atomically (temp file, then rename).
+   - The engine checks the file every 1 to 5 seconds, applies every command
+     with seq greater than lastCommandSeq (kept in status.json), and records
+     the result in status.json "commandAcks".
+   - Ack results: Applied, Rejected (unknown type or bad args), Ignored (for
+     example the run already ended).
+   - Commands are idempotent. After a restart the engine reads lastCommandSeq
+     from the previous status.json so it does not replay old commands.
+   - Commands sent after the run reaches a terminal state are ignored.
+
+
+================================================================================
+7. OUTPUT FILES
+================================================================================
+
+7.1 repo-changes.json  (the response file for repository discovery)
+
+Written when RepoClone finishes discovery (before cloning completes). It
+describes what changed in the repo estate compared with the persistent
+inventory.
+
+{
+  "schemaVersion": 3,
+  "runId": "2026-10-14T03-00-00Z",
+  "generatedAt": "2026-10-14T03:20:00Z",
+  "discovery": [
+    { "source": "ADO",    "org": "vizientinc",  "completed": true,
+      "reposFound": 2310, "error": null },
+    { "source": "GitHub", "org": "RnD-Vizient", "completed": false,
+      "reposFound": 0, "error": "401 Unauthorized" }
+  ],
+  "totals": { "known": 6004, "active": 5800, "archived": 150, "disabled": 20,
+              "deleted": 30, "unreachable": 4, "new": 12, "changed": 7 },
+  "changes": [
+    { "type": "New", "key": "gh-91234", "source": "GitHub",
+      "org": "RnD-Vizient", "name": "newrepo", "status": "Active" },
+    { "type": "StatusChanged", "key": "ado-77ab...", "from": "Active",
+      "to": "Archived", "detectedAt": "2026-10-14T03:18:00Z" },
+    { "type": "Renamed", "key": "ado-3f9c...",
+      "from": "vizientinc/Claro/old", "to": "vizientinc/Claro/foo" },
+    { "type": "Deleted", "key": "gh-55021",
+      "lastSeenRunId": "2026-10-11T03-00-00Z" },
+    { "type": "Reappeared", "key": "gh-4410", "from": "Deleted", "to": "Active" },
+    { "type": "Unreachable", "key": "ado-91cc...", "reason": "403" }
+  ],
+  "scanPlan": {
+    "mode": "Normal",
+    "perTool": {
+      "Semgrep": { "toScan": 220, "skippedUnchanged": 5400,
+                   "canaries": 270, "skippedStatus": 150 }
+    },
+    "forcedFullTools": []
+  }
+}
+
+  Repo statuses:    Active, Archived, Disabled, Deleted, Unreachable
+  Change types:     New, StatusChanged, Renamed, Deleted, Reappeared, Unreachable
+  Deleted rule:     a repo is Deleted only if its org enumeration completed AND
+                    a direct lookup of the repo returns "not found". An error,
+                    a partial enumeration, or an access failure means
+                    Unreachable, never Deleted.
+  Scan plan:        counts only. The per-repo skip detail is in the
+                    .skipped.json markers.
+
+7.2 repos.json  (persistent inventory, state\repos.json; snapshot in each run)
+
+{
+  "schemaVersion": 3,
+  "updatedAt": "2026-10-14T03:20:00Z",
+  "tools": {
+    "Semgrep": { "lastFullScanAt": "2026-10-14T03:00:00Z", "forceFull": false }
+  },
+  "repos": [
+    {
+      "key": "ado-3f9c1a...", "source": "ADO", "id": "3f9c1a...",
+      "org": "vizientinc", "project": "Claro", "name": "foo",
+      "url": "https://dev.azure.com/vizientinc/Claro/_git/foo",
+      "status": "Active", "statusChangedAt": "2026-09-01T00:00:00Z",
+      "firstSeenRunId": "2026-10-14T03-00-00Z",
+      "lastSeenRunId": "2026-10-14T03-00-00Z",
+      "localPath": "D:\\Repos\\ADO\\vizientinc\\Claro\\foo",
+      "lastCloneResult": "Ok",
+      "scan": {
+        "Semgrep": { "sha": "a1b2c3...", "scanMode": "worktree",
+                     "toolVersion": "1.x", "rulesVersion": "p/default@2026-10-01",
+                     "configHash": "9f2e...", "scannedAt": "2026-10-14T05:02:00Z",
+                     "findingCount": 14 }
+      }
+    }
+  ]
+}
+
+  - The persistent copy is the engine's memory between runs. It is read at the
+    start of RepoClone discovery and rewritten atomically at the end of the
+    run (and after discovery, so a crash does not lose discovery results).
+  - A per-tool entry under "scan" is written only after that tool finishes
+    cleanly for that repo. It records the SHA that was actually checked out.
+  - Losing this file means every repo looks New. Keep repos.json.bak, and the
+    per-run snapshot also serves as a backup.
+  - The first-ever run must be seeded from the existing repo list, or every
+    repo is reported as New.
+
+7.3 Result files and markers  (per tool, per entity, in results\<tool>\)
+
+  <key>.json            raw output of the tool, unmodified
+  <key>.done.json       the tool finished cleanly for this entity
+  <key>.failed.json     the tool failed for this entity
+  <key>.skipped.json    the tool was not run for this entity
+
+  <key>.done.json
+  {
+    "sha": "a1b2c3...",
+    "scanMode": "worktree",
+    "toolVersion": "1.x",
+    "rulesVersion": "p/default@2026-10-01",
+    "configHash": "9f2e...",
+    "startedAt": "2026-10-14T05:01:10Z",
+    "endedAt":   "2026-10-14T05:02:00Z",
+    "findingCount": 14,
+    "canary": false
+  }
+
+  <key>.failed.json
+  {
+    "category": "Timeout",
+    "attempts": 2,
+    "message": "exceeded 30 min",
+    "sha": "a1b2c3..."
+  }
+  (category examples: Timeout, ToolError, BuildFailed, CloneFailed, AuthFailed,
+   ParseError. The message is scrubbed of secret values.)
+
+  <key>.skipped.json
+  {
+    "reason": "Unchanged",
+    "sha": "a1b2c3...",
+    "key": { "scanMode": "worktree", "toolVersion": "1.x",
+             "rulesVersion": "p/default@2026-10-01", "configHash": "9f2e..." },
+    "lastScannedAt": "2026-10-11T05:02:00Z"
+  }
+  (other reasons: StatusArchived, StatusDisabled, StatusDeleted,
+   StatusUnreachable, NotApplicable (for example a non-.NET repo for
+   SonarDotNet), ExcludedByRequest)
+
+  Skipped repos: their findings from earlier runs carry forward. A consumer
+  must treat "skipped" as "not scanned this run", never as "clean".
+
+  Rapid7 and CheckMarx step-level marker  (results\<tool>\_import.done.json)
+  {
+    "startedAt": "2026-10-14T03:00:05Z", "endedAt": "2026-10-14T03:22:41Z",
+    "entities": 150, "findings": 987654, "failedEntities": 0
+  }
+
+7.4 Final state and exit code
+
+  The run is complete when status.json shows a terminal state (section 8) and
+  the process has exited. Exit code: 0 success, 1 completed with flagged
+  failures, 2 fatal. The failures themselves are the .failed.json markers.
+
+
+================================================================================
+8. REAL-TIME STATUS FILE
+================================================================================
+
+status.json is rewritten atomically every "statusIntervalSeconds" (default 5).
+It is small by design. Per-repo detail lives in the marker files.
+
+{
+  "schemaVersion": 3,
+  "runId": "2026-10-14T03-00-00Z",
+  "revision": 1,
+  "attempt": 1,
+  "state": "Running",
+  "paused": false,
+  "pid": 4812,
+  "mode": "Normal",
+  "startedAt": "2026-10-14T03:00:02Z",
+  "updatedAt": "2026-10-14T05:12:37Z",
+  "endedAt": null,
+  "phase": "Scan",
+  "overall": { "percent": 41, "stepsCompleted": 3, "stepsTotal": 8 },
+  "steps": [
+    { "name": "Rapid7",        "status": "Completed", "done": 150,  "total": 150,
+      "failed": 0, "skipped": 0, "message": null },
+    { "name": "CheckMarx",     "status": "Completed", "done": 480,  "total": 480,
+      "failed": 0, "skipped": 0, "message": null },
+    { "name": "RepoClone",     "status": "Completed", "done": 5812, "total": 5812,
+      "failed": 3, "skipped": 5600, "message": null },
+    { "name": "TruffleHog",    "status": "Running",   "done": 140,  "total": 220,
+      "failed": 2, "skipped": 5400, "canaries": 11, "running": 8,
+      "message": "RnD-Vizient/foo" },
+    { "name": "Semgrep",       "status": "Running",   "done": 90,   "total": 220,
+      "failed": 0, "skipped": 5400, "canaries": 11, "running": 8,
+      "message": "vizientinc/Claro/bar" },
+    { "name": "Snyk",          "status": "Disabled",  "done": 0, "total": 0,
+      "failed": 0, "skipped": 0, "message": "disabled in request.json" },
+    { "name": "SonarStandard", "status": "Running",   "done": 30,   "total": 180,
+      "failed": 1, "skipped": 4900, "canaries": 9, "running": 4,
+      "message": "ado-3f9c..." },
+    { "name": "SonarDotNet",   "status": "Pending",   "done": 0, "total": 14,
+      "failed": 0, "skipped": 270, "running": 0, "message": null }
+  ],
+  "effective": {
+    "TruffleHog": { "maxParallel": 3 },
+    "Semgrep": { "maxParallel": 8 }
+  },
+  "alerts": [
+    { "type": "CanaryMismatch", "tool": "Semgrep", "repo": "gh-1234",
+      "was": 14, "now": 19, "at": "2026-10-14T05:00:00Z" },
+    { "type": "ExpiringSecret", "name": "ado-pat", "expiresAt": "2027-01-10" }
+  ],
+  "lastCommandSeq": 3,
+  "commandAcks": [
+    { "seq": 3, "status": "Applied", "at": "2026-10-14T05:11:10Z",
+      "message": null }
+  ]
+}
+
+  Fields:
+   state   Starting, Running, Pausing, Paused, Stopping, Completed,
+           CompletedWithFlags, Failed, Stopped.
+           Completed, CompletedWithFlags, Failed, and Stopped are terminal.
+   phase   Preflight, Import+Clone, Scan, Finalize
+   steps   always eight entries, one per tool. status is one of:
+           Pending, Running, Completed, CompletedWithFlags, Failed,
+           Disabled.
+   done    entities finished (done, failed, or skipped-as-not-needed are
+           counted separately in "failed" and "skipped")
+   skipped repos not scanned by this tool in this run (unchanged, status, or
+           not applicable)
+   alerts  the latest 20 only
+   commandAcks  the latest 20 only
+
+  Reading it:
+   - A reader treats updatedAt older than 30 to 60 seconds, or a pid that no
+     longer exists while state is non-terminal, as a dead run.
+   - On resume, the engine reads the prior status.json for lastCommandSeq and
+     increments "attempt".
+
+
+================================================================================
+9. EXECUTION FLOW FOR THE EIGHT TOOLS
+================================================================================
+
+9.1 Dependency and concurrency overview
+
+   [Preflight]
+        |
+        v
+   +-------------------+-------------------+-------------------+
+   | Rapid7 import     | CheckMarx import  | RepoClone         |   PHASE 1
+   | (API, parallel    | (API, parallel    | (discover, track, |   (parallel)
+   |  with others)     |  with others)     |  clone/update)    |
+   +---------+---------+---------+---------+---------+---------+
+             |                   |                   |
+             |                   |      (RepoClone must finish before scans)
+             |                   |                   v
+             |                   |   +-----------+---------+---------+-----------+
+             |                   |   | TruffleHog| Semgrep | Snyk    | SonarStd  |   PHASE 2
+             |                   |   |           |         |         | SonarDotNet|  (parallel)
+             |                   |   +-----------+---------+---------+-----------+
+             v                   v                   v
+        [wait for all eight tools to finish or be disabled]
+                             |
+                             v
+                        [Finalize]
+
+  Default limits (all set in engine.json, changeable by command):
+     Rapid7 and CheckMarx   one connection each (paged API calls)
+     RepoClone              12 parallel git operations
+     TruffleHog             8 repos at once
+     Semgrep                8 repos at once
+     Snyk                   4 repos at once (vendor API limits)
+     SonarStandard          4 scanners at once
+     SonarDotNet            4 builds at once
+  The Sonar server processes analysis reports one at a time on the Community
+  edition (verify the edition), so Sonar scanners may finish quickly and then
+  wait on the server queue. The engine waits for each analysis task to finish.
+
+9.2 Tool by tool
+
+  TOOL 1 - Rapid7 (import)
+   Inputs:     Rapid7 API base URL and token (secret "rapid7-token")
+   Action:     list applications; for each, page through its vulnerabilities
+   Output:     results\Rapid7\r7-<appId>.json (raw), r7-<appId>.done.json,
+               _import.done.json
+   Failure:    a failed application gets r7-<appId>.failed.json; the import
+               continues. Auth failure fails the step fast (step Failed).
+   Skip:       never skipped. Always imports.
+
+  TOOL 2 - CheckMarx (import)
+   Inputs:     CheckMarx API base URL and token ("checkmarx-token")
+   Action:     list projects; for each, page through results (state and
+               status fields included)
+   Output:     results\CheckMarx\cx-<projectId>.json, .done.json,
+               _import.done.json
+   Failure:    same pattern as Rapid7
+   Skip:       never skipped. Always imports.
+
+  TOOL 3 - RepoClone (discover, track, clone/update)
+   Inputs:     engine.json "sources" (orgs and token secret names),
+               state\repos.json (previous inventory)
+   Action:
+     a. Enumerate every configured ADO and GitHub org (paged API calls).
+     b. Compare to the inventory, classify changes (section 7.1), and write
+        repo-changes.json plus the first persist of state\repos.json.
+     c. For each repo in scope (Active, plus Archived if scanArchived is
+        true; never Deleted or Unreachable), in parallel:
+          - run "git ls-remote <url> HEAD" to read the current HEAD SHA
+          - if the repo is already cloned AND the SHA equals the stored
+            HEAD SHA from the last successful clone: no fetch needed
+            (write .skipped.json, reason Unchanged)
+          - otherwise clone (if new) or "git fetch --prune" then reset the
+            working tree to the default branch (if existing)
+          - on any ls-remote error: attempt the fetch; if that fails the repo
+            is recorded Unreachable
+          - handle renames: move the local folder, or re-clone if that fails
+     d. Record the checked-out SHA in memory for the scan phase.
+   Output:     repo-changes.json, repos.json (snapshot), and per repo
+               results\RepoClone\<repoKey>.done.json | .failed.json | .skipped.json
+   Failure:    a failed clone or fetch gives .failed.json (category CloneFailed
+               or AuthFailed); that repo is excluded from Phase 2 and flagged.
+               A failed ORG enumeration never causes repos to be marked
+               Deleted (they become Unreachable).
+   Notes:      long paths must be enabled in Windows and Git
+               (core.longpaths). Local clones are never deleted automatically.
+
+  TOOL 4 - TruffleHog (secrets)
+   Applies to: every in-scope repo that was cloned or exists on disk
+   Command:    trufflehog filesystem <repoPath> --json --no-verification
+               --exclude-paths <exclusions> (mode "git" is possible but
+               defaults to "filesystem"; verification stays off until Vizient
+               SecOps approves it)
+   Output:     results\TruffleHog\<repoKey>.json and markers
+   Skip:       standard skip key applies (section 11). If verification is ever
+               turned on, skipping is disabled for this tool (a secret's
+               verified status can change without any commit).
+   Note:       raw output can contain secret values. Restrict permissions on
+               the run folder.
+
+  TOOL 5 - Semgrep (static analysis)
+   Applies to: every in-scope repo
+   Command:    semgrep scan --config <pack> (for each pinned pack) --json
+               --metrics off --exclude <patterns> <repoPath>
+   Output:     results\Semgrep\<repoKey>.json and markers
+   Skip:       standard skip key applies. Rule packs are pinned so rule changes
+               change the key.
+
+  TOOL 6 - Snyk (Snyk Code)
+   Applies to: every in-scope repo (mode "code")
+   Command:    snyk code test --json <repoPath>  (SNYK_TOKEN from the secret
+               store; runs under the locked-down account when configured)
+   Output:     results\Snyk\<repoKey>.json and markers
+   Skip:       standard skip key applies in "code" mode. In "dependencies" mode
+               it is NEVER skipped (new CVEs appear without code changes).
+   Note:       dependency mode may run build tools that execute repo code, so
+               it must stay under the locked-down account.
+
+  TOOL 7 - SonarStandard (non-.NET repos)
+   Applies to: in-scope repos WITHOUT a .sln or .csproj file
+   Action:     run sonar-scanner for the repo (project key = repoKey), wait for
+               the server-side analysis task to complete, then fetch the issues
+               through the SonarQube web API.
+   Output:     results\SonarStandard\<repoKey>.json and markers
+   Skip:       standard skip key applies.
+   Note:       the issues search API stops returning results beyond 10,000 per
+               query, so the fetch must be sliced (by type, severity, or date)
+               and the engine records the server's reported total in the marker
+               so truncation can be detected. A mismatch is a failure
+               (category ParseError), not a silent partial result.
+               SonarScanner leaves a .scannerwork folder in the repo; the
+               engine removes it after each scan.
+
+  TOOL 8 - SonarDotNet (.NET repos)
+   Applies to: in-scope repos WITH a .sln or .csproj file (these repos are NOT
+               also sent to SonarStandard)
+   Action:     dotnet sonarscanner begin; dotnet build; dotnet sonarscanner
+               end (runs under the locked-down account because it builds the
+               repo), wait for the analysis task, fetch the issues as above.
+   Output:     results\SonarDotNet\<repoKey>.json and markers
+   Failure:    restore or build failures give .failed.json (BuildFailed);
+               the repo is NOT retried with the standard scanner.
+   Skip:       standard skip key applies.
+
+9.3 What the engine does for each repo and tool in Phase 2 (pseudocode)
+
+   for each in-scope repo, for each applicable tool (queued, bounded by the
+   tool's maxParallel):
+
+      key = { sha (checked-out), scanMode, toolVersion, rulesVersion,
+              configHash }
+      stored = repos.json[repo].scan[tool]
+
+      decide:
+         if request.mode == Full, or tool.forceFull, or no stored state,
+            or any key part missing/mismatched, or tool is never-skip:
+               action = Scan
+         else if it was chosen as a canary (canaryPercent of the skippable
+            pairs, picked at random): action = Scan (canary = true)
+         else: action = Skip (reason Unchanged)
+
+      if Skip:
+         write <repoKey>.skipped.json; count it; continue
+
+      run the tool (timeout, child process tree tracked)
+         on success: write <repoKey>.json, then <repoKey>.done.json;
+                     update repos.json scan[tool] (sha, versions, configHash,
+                     scannedAt, findingCount)
+                     if canary and findingCount != stored findingCount:
+                         raise alert CanaryMismatch, set tool.forceFull = true
+         on failure: retry up to engine.json retry.maxAttempts with backoff;
+                     then write <repoKey>.failed.json and leave scan[tool]
+                     unchanged (so the next run rescans the repo)
+         on timeout: kill the whole process tree, treat as failure (Timeout)
+
+      update status.json counters
+
+   Commands are checked between repos (and between retries), not mid-process,
+   except Abort which kills child process trees immediately.
+
+9.4 Finalize
+
+   - wait for all enabled tools to finish
+   - choose the terminal state:
+        Completed            no failures
+        CompletedWithFlags   one or more .failed.json markers
+        Failed               a step failed fast (for example import auth error)
+        Stopped              ended by a Stop or Abort command
+   - clear forceFull flags for tools that completed a full pass, and set
+     tools[tool].lastFullScanAt
+   - persist state\repos.json and write the snapshot into the run folder
+   - write the final status.json, release the lock, exit with the code
+
+
+================================================================================
+10. RUN LIFECYCLE, RESUME, AND COMMANDS
+================================================================================
+
+States and transitions:
+
+   Starting -> Running -> Completed | CompletedWithFlags | Failed
+                 |  ^
+                 v  |
+      Pausing -> Paused (Pause / Resume commands)
+                 |
+      Stopping -> Stopped (Stop / Abort commands)
+
+Lock:
+   - state\engine.lock is held for the life of an engine process. A second
+     engine process refuses to start (exit 2) while it is held. A long run
+     therefore delays the next scheduled start; it never overlaps it.
+   - A stale lock (the owning pid no longer exists) is taken over.
+
+Resume (the run ended early or the machine restarted):
+   1. The invoker rewrites request.json in the SAME run folder: mode Resume,
+      revision + 1. (Only while no engine process is running.)
+   2. The invoker starts "engine run --run-folder <same folder>".
+   3. The engine reads existing markers: every repo/tool with .done.json is
+      not repeated; repos/tools without a marker are queued; .failed.json
+      entries are retried only in mode RetryFailed.
+   4. status.json "attempt" increases; lastCommandSeq is preserved.
+
+A new scheduled scan ALWAYS gets a NEW run folder. One run folder is one scan.
+
+Commands: see section 6.3. Typical uses:
+   - Pause during business hours, Resume at night.
+   - Lower TruffleHog parallelism if the VM is overloaded.
+   - DisableTool Snyk if its vendor API is down.
+   - RetryFailed after fixing a transient problem, without restarting.
+   - Stop to end gracefully; Abort to end immediately.
+
+
+================================================================================
+11. SKIP LOGIC, CANARIES, AND FULL RESCANS
+================================================================================
+
+Goal: do not rescan a repo for a tool when nothing relevant changed. Where there
+is any doubt, scan.
+
+Skip key (all parts must match the last successful scan of that repo and tool):
+   - HEAD SHA of the default branch (the SHA actually checked out)
+   - scan mode (for example worktree or git history)
+   - tool version
+   - rules version (pinned Semgrep packs, Sonar profile, and so on)
+   - config hash (the tool's settings plus the shared exclusions file)
+
+Rules:
+   - Missing or unknown part means scan.
+   - Any error reading the SHA (ls-remote failure) means scan or flag
+     Unreachable, never skip.
+   - State is written only after a clean finish for that repo and tool.
+   - Never skipped: Rapid7 and CheckMarx imports; Snyk in dependency mode;
+     TruffleHog with verification on.
+   - Skipped repos carry their earlier findings forward. They are reported as
+     "skipped (unchanged)" and must not be read as clean or remediated.
+   - The first run has no state, so everything is scanned.
+
+Canaries:
+   - Each run, a random "canaryPercent" (default 5) of the otherwise skippable
+     repo/tool pairs are scanned anyway.
+   - If a canary's finding count differs from the stored count while the SHA is
+     unchanged, rules or tool data changed. The engine raises a CanaryMismatch
+     alert and sets that tool's forceFull, so the next run scans that tool on
+     all repos. The flag then clears.
+
+Full rescans:
+   - Scheduled: if now minus lastFullScanAt for a tool exceeds
+     fullRescanEveryDays (default 30), that tool scans every repo.
+   - Manual: request.json mode Full.
+   - Expect the first run and any full rescan to take much longer than a
+     normal run (see section 15).
+
+
+================================================================================
+12. SECRETS
+================================================================================
+
+All secrets the engine needs are in one encrypted file, protected with Windows
+DPAPI, readable only by the service account that created it.
+
+File:     C:\Scanner\secrets\secrets.dat  (read/write for the service account
+          only)
+Layout:   8-byte clear header "VSCRT001", then the DPAPI blob
+          (DataProtectionScope.CurrentUser, fixed application entropy bytes)
+Plain-text content before encryption:
+
+   {
+     "schemaVersion": 1,
+     "secrets": {
+       "ado-pat":        { "value": "...", "createdAt": "2026-10-12T14:00:00Z",
+                           "expiresAt": "2027-01-10" },
+       "github-token":   { "value": "...", "createdAt": "...", "expiresAt": null },
+       "rapid7-token":   { "value": "...", "createdAt": "...", "expiresAt": null },
+       "checkmarx-token":{ "value": "...", "createdAt": "...", "expiresAt": null },
+       "snyk-token":     { "value": "...", "createdAt": "...", "expiresAt": null },
+       "sonar-token":    { "value": "...", "createdAt": "...", "expiresAt": null },
+       "buildtools-account-password":
+                         { "value": "...", "createdAt": "...", "expiresAt": null }
+     }
+   }
+
+Subcommands (run as the service account):
+   engine secrets set <name> [--expires <date>] [--stdin]
+        creates the file if needed; prompts without echo; --stdin for piping;
+        there is intentionally no --value flag (it would show in the process
+        list and shell history)
+   engine secrets list      names, created, expires, status (never values)
+   engine secrets remove <name>
+   engine secrets check     the file decrypts and every secret named in
+                            engine.json exists and is not expired
+   Exit codes: 0 ok, 1 warnings only (expiring soon), 2 error.
+   set and remove refuse to run unless the current Windows account equals
+   engine.json secrets.requiredAccount.
+
+Runtime rules:
+   - Preflight runs the equivalent of "secrets check". A missing or expired
+     required secret, or a file that will not decrypt, stops the run (exit 2).
+     A secret expiring within expiryWarnDays adds an ExpiringSecret alert.
+   - Secrets are loaded once into memory. Each tool gets only the secrets in its
+     "env" map, as environment variables on that child process. Inherited
+     variables that match secret names are cleared first.
+   - No secret value is written to status.json, any result file, any marker,
+     or any log. Tool output is scrubbed of secret values before storage.
+   - Tools that build code (Snyk in dependency mode, SonarDotNet) run under the
+     locked-down account (runAs), which cannot decrypt this file.
+
+Limits:
+   - The file works only for that account on that machine. If the VM is rebuilt
+     or an administrator resets the account's password, DPAPI can lose the
+     key; re-enter the secrets from Vizient.
+   - Anyone with administrator rights on the VM can decrypt it.
+   - Test under the real Task Scheduler configuration ("run whether user is
+     logged on or not", stored password). Use a normal service account; a
+     managed service account (gMSA) does not work well with DPAPI.
+
+
+================================================================================
+13. RETENTION AND CLEANUP
+================================================================================
+
+   - Keep the last 4 run folders in full. Start-Scan.ps1 deletes older run
+     folders at the start of a run. A consumer must collect results within
+     that window.
+   - Raw results contain secrets and source snippets (TruffleHog especially).
+     Apply NTFS permissions to D:\Scanner and D:\Repos, and follow the
+     retention and deletion terms of the written agreement.
+   - Small files (request.json, final status.json, repo-changes.json) may be
+     zipped and kept longer as an audit trail.
+   - Local repo clones are never deleted by the engine.
+   - state\repos.json and repos.json.bak must be backed up (VM snapshot).
+   - The engine removes .scannerwork folders created by SonarScanner.
+
+
+================================================================================
+14. OUT OF SCOPE
+================================================================================
+
+The database and loader, reporting and spreadsheets, delta and burn-down,
+ownership import, severity normalization, finding status model, dedup across
+tools, risk and health scores, secret aggregation across repos, Nucleus export,
+and any user interface.
+
+
+================================================================================
+15. OPEN ITEMS AND RISKS
+================================================================================
+
+ 1. Time estimate (not measured): a normal run is about 5 to 6 hours (range 3 to
+    10), dominated by the Sonar server queue. The first run and full rescans
+    take about 1 day with a code-only, active-since-2025 filter, or 2 to 4
+    days without it. A timed pilot of 100 to 200 repos (including .NET repos)
+    should replace these guesses.
+ 2. Eligibility filter (active since 2025, code repos only for Semgrep, Snyk,
+    and Sonar): not decided.
+ 3. Output format for the downstream consumer (the existing Python pipeline
+    expects combined per-tool files) is not settled.
+ 4. Baseline comparability: tool settings (Semgrep rules, TruffleHog options,
+    exclusions) must match how the baseline was produced, or the delta is noise.
+ 5. Repo list: about 4,800 known against roughly 6,000 expected. Seed
+    state\repos.json from the existing list. Discovery covers only the orgs in
+    engine.json.
+ 6. repos.json is critical state; keep backups.
+ 7. Vizient inputs: read-only ADO, GitHub, Rapid7, and CheckMarx credentials;
+    SecOps sign-off for TruffleHog verification; a decision on the locked-down
+    account (or exclusion) for Snyk and SonarDotNet.
+ 8. Windows long-path support in Windows and Git.
+ 9. SonarQube on Windows Server: native install; verify Java version and
+    edition (compute-engine workers affect throughput).
+10. Policy decisions: whether to scan Archived and Disabled repos; how long to
+    keep a deleted repo's local clone.
+11. Plaintext tokens in the existing PowerShell scripts must be rotated before
+    those scripts are used on the VM.
+12. Who consumes the run folders, and when, is undecided; retention deletes runs
+    older than the last 4.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

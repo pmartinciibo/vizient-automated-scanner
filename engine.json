@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 3,
+  "paths": {
+    "reposRoot": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Repos",
+    "runs": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs",
+    "state": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\state",
+    "tmp": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\tmp",
+    "logs": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\logs"
+  }
+}
