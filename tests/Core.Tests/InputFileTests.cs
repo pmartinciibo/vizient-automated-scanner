@@ -100,7 +100,6 @@ public class InputFileTests : IDisposable
     }
 
     [Theory]
-    [InlineData("")]
     [InlineData("..")]
     [InlineData("..\\evil")]
     [InlineData("a/b")]

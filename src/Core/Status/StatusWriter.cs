@@ -11,6 +11,7 @@ public sealed class StatusWriter(string statusFile, RunStatusTracker tracker, Ti
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private Task? _loop;
+    private bool _failureReported;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -41,10 +42,17 @@ public sealed class StatusWriter(string statusFile, RunStatusTracker tracker, Ti
                 try
                 {
                     await WriteAsync(attempts: 1, _stop.Token);
+                    _failureReported = false;
                 }
-                catch (IOException)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    // A reader held the file for a moment. The next tick writes again.
+                    // Most often a reader (an invoker polling this file) held it, so it could not be replaced.
+                    // Whatever the cause, one failed tick must not end the updates: the next tick writes again.
+                    if (!_failureReported)
+                    {
+                        _failureReported = true;
+                        Console.Error.WriteLine($"Could not update the status file ({ex.GetType().Name}); will keep trying.");
+                    }
                 }
             }
         }
@@ -66,7 +74,7 @@ public sealed class StatusWriter(string statusFile, RunStatusTracker tracker, Ti
                     await AtomicJsonFile.WriteAsync(statusFile, tracker.Snapshot(), cancellationToken);
                     return;
                 }
-                catch (IOException) when (attempt < attempts)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < attempts)
                 {
                     await Task.Delay(200, cancellationToken);
                 }

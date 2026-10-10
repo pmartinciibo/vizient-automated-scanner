@@ -166,8 +166,11 @@ public class CommandTests : IDisposable
         Assert.True(context.Control.IsToolDisabled("Snyk", out var reason));
         Assert.Equal("vendor outage", reason);
         Assert.True(context.Control.IsRepoSkipped("gh-91234"));
-        Assert.Equal(["Semgrep"], context.Control.TakeRetryRequests());
-        Assert.Empty(context.Control.TakeRetryRequests());
+        long semgrepCursor = 0;
+        long snykCursor = 0;
+        Assert.True(context.Control.RetryRequestedSince("Semgrep", ref semgrepCursor));
+        Assert.False(context.Control.RetryRequestedSince("Semgrep", ref semgrepCursor)); // already seen
+        Assert.False(context.Control.RetryRequestedSince("Snyk", ref snykCursor));       // asked for Semgrep only
         Assert.Equal("Rejected", badSkip.Status);
         Assert.Contains(context.Status.Snapshot().Alerts, a => a.Type == "ToolDisabled" && a.Tool == "Snyk");
     }

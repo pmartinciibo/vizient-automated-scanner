@@ -66,7 +66,7 @@ public sealed class RunOrchestrator(
         try
         {
             await tool.RunAsync(context, cancellationToken);
-            context.Status.StepFinished(tool.Name, ToolRunState.Completed);
+            context.Status.CompleteStep(tool.Name);
             return new ToolResult(tool.Name, Succeeded: true);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

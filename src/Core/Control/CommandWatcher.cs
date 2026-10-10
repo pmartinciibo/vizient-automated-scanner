@@ -21,6 +21,7 @@ public sealed class CommandWatcher(
     private readonly CancellationTokenSource _stop = new();
     private Task? _loop;
     private bool _unreadableReported;
+    private bool _failureReported;
 
     public void Start() => _loop = Task.Run(LoopAsync, CancellationToken.None);
 
@@ -42,7 +43,7 @@ public sealed class CommandWatcher(
             commands = await CommandReader.ReadNewAsync(commandFile, runId, status.LastCommandSeq, cancellationToken);
             _unreadableReported = false;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The invoker has it open for the moment. Try again next tick.
             return;
@@ -79,7 +80,20 @@ public sealed class CommandWatcher(
         {
             do
             {
-                await PollOnceAsync(_stop.Token);
+                try
+                {
+                    await PollOnceAsync(_stop.Token);
+                    _failureReported = false;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // One bad poll must not end the watching: commands would silently stop being applied.
+                    if (!_failureReported)
+                    {
+                        _failureReported = true;
+                        Console.Error.WriteLine($"Could not read commands ({ex.GetType().Name}); will keep trying.");
+                    }
+                }
             }
             while (await timer.WaitForNextTickAsync(_stop.Token));
         }

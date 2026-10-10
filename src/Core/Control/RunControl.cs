@@ -159,14 +159,31 @@ public sealed class RunControl
         }
     }
 
-    /// <summary>Returns the retry requests made since the last call. Tools requeue their failed repos.</summary>
-    public IReadOnlyList<string?> TakeRetryRequests()
+    /// <summary>
+    /// Where a tool's loop starts looking for retry requests. Each loop keeps its own cursor, so a request for
+    /// every tool reaches all of them and a request for one tool is not used up by another.
+    /// </summary>
+    public long RetryCursor
+    {
+        get { lock (_gate) { return _retryRequests.Count; } }
+    }
+
+    /// <summary>
+    /// True if a retry was requested for this tool (or for every tool) after <paramref name="cursor"/>.
+    /// Moves the cursor past everything seen. The tool then requeues its failed repos.
+    /// </summary>
+    public bool RetryRequestedSince(string tool, ref long cursor)
     {
         lock (_gate)
         {
-            var taken = _retryRequests.ToList();
-            _retryRequests.Clear();
-            return taken;
+            var requested = false;
+            for (var i = (int)cursor; i < _retryRequests.Count; i++)
+            {
+                requested |= _retryRequests[i] is null || _retryRequests[i] == tool;
+            }
+
+            cursor = _retryRequests.Count;
+            return requested;
         }
     }
 

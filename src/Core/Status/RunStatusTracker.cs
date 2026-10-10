@@ -194,6 +194,19 @@ public sealed class RunStatusTracker
     public void StepFinished(string tool, ToolRunState status, string? message = null) =>
         UpdateStep(tool, step => step with { Status = status, Message = message ?? step.Message });
 
+    /// <summary>
+    /// A tool has returned. It is Completed, or CompletedWithFlags if some of its repos failed. A step already
+    /// marked Disabled (by a command, part way through) stays Disabled.
+    /// </summary>
+    public void CompleteStep(string tool) =>
+        UpdateStep(tool, step => step.Status == ToolRunState.Disabled
+            ? step with { Running = 0 }
+            : step with
+            {
+                Status = step.Failed > 0 ? ToolRunState.CompletedWithFlags : ToolRunState.Completed,
+                Running = 0
+            });
+
     /// <summary>For tools to report counts, the current repo and so on.</summary>
     public void UpdateStep(string tool, Func<ToolProgress, ToolProgress> update)
     {

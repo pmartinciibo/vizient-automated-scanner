@@ -1,3 +1,4 @@
+using System.Globalization;
 using Vizient.AutomatedScanner.Core.Configuration;
 using Vizient.AutomatedScanner.Core.Control;
 using Vizient.AutomatedScanner.Core.IO;
@@ -34,11 +35,13 @@ public sealed record RunContext(
     /// Reads the external request file, creates (or reopens) the run folder under the configured runs root,
     /// and copies the request file into it. The request file itself is never modified.
     /// Normal and Full start a new run folder; Resume and RetryFailed continue an existing one.
+    /// If the request has no runId, one is generated from the current time (see <see cref="NewRunId"/>).
     /// </summary>
     public static async Task<RunContext> StartAsync(
         EngineConfig config,
         string requestFile,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeProvider? time = null)
     {
         var requestPath = Path.GetFullPath(requestFile);
         if (!File.Exists(requestPath))
@@ -47,6 +50,21 @@ public sealed record RunContext(
         }
 
         var request = await AtomicJsonFile.ReadAsync<RunRequestDocument>(requestPath, cancellationToken);
+
+        var runIdGenerated = false;
+        if (string.IsNullOrWhiteSpace(request.RunId))
+        {
+            // Continuing a run means naming it, so there is nothing to generate for those.
+            if (request.Mode is ScanMode.Resume or ScanMode.RetryFailed)
+            {
+                throw new InvalidDataException(
+                    $"A {request.Mode} run continues an existing run, so request.json must give its runId.");
+            }
+
+            request = request with { RunId = NewRunId(config.RunsRoot, time ?? TimeProvider.System) };
+            runIdGenerated = true;
+        }
+
         ValidateRequest(request);
 
         var paths = new RunPaths(Path.Combine(config.RunsRoot, request.RunId));
@@ -71,8 +89,34 @@ public sealed record RunContext(
         var commands = await CommandLog.CreateAsync(paths, request.RunId, cancellationToken);
 
         Directory.CreateDirectory(paths.RunFolder);
-        await AtomicJsonFile.CopyAsync(requestPath, paths.Request, cancellationToken);
+        if (runIdGenerated)
+        {
+            // The invoker's file has no runId, so the run's copy is written with the one that was generated.
+            await AtomicJsonFile.WriteAsync(paths.Request, request, cancellationToken);
+        }
+        else
+        {
+            await AtomicJsonFile.CopyAsync(requestPath, paths.Request, cancellationToken);
+        }
+
         return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands, new ProcessRunner());
+    }
+
+    /// <summary>
+    /// The current UTC time to the second, as yyyy-MM-ddTHH-mm-ssZ (the design's runId form, for example
+    /// 2026-10-14T03-00-00Z). It is the run folder's name, so it has no / or : in it. If a run folder with
+    /// that name exists already (two runs in the same second), -2, -3 and so on is added.
+    /// </summary>
+    public static string NewRunId(string runsRoot, TimeProvider time)
+    {
+        var stamp = time.GetUtcNow().ToUniversalTime().ToString("yyyy-MM-dd'T'HH-mm-ss'Z'", CultureInfo.InvariantCulture);
+        var candidate = stamp;
+        for (var suffix = 2; Directory.Exists(Path.Combine(runsRoot, candidate)); suffix++)
+        {
+            candidate = $"{stamp}-{suffix}";
+        }
+
+        return candidate;
     }
 
     private static void ValidateRequest(RunRequestDocument request)

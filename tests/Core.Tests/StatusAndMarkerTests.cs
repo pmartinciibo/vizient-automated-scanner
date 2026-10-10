@@ -125,6 +125,27 @@ public class StatusAndMarkerTests : IDisposable
         Assert.Empty(Directory.GetFiles(_invocation.Directory, "*.tmp"));
     }
 
+    [Fact]
+    public async Task WriterKeepsGoingAfterAReaderHeldTheFileSoItCouldNotBeReplaced()
+    {
+        var tracker = await RunStatusTracker.CreateAsync(_paths, _invocation, Request());
+        var writer = new StatusWriter(_invocation.Status, tracker, TimeSpan.FromMilliseconds(30));
+        await writer.StartAsync();
+
+        // An invoker polling status.json with a reader that does not allow the file to be replaced.
+        var reader = new FileStream(_invocation.Status, FileMode.Open, FileAccess.Read, FileShare.Read);
+        tracker.SetState(RunState.Running);
+        await Task.Delay(300); // several ticks fail to replace the file
+        reader.Dispose();
+
+        tracker.SetState(RunState.Paused);
+        await WaitForAsync(async () => (await AtomicJsonFile.ReadAsync<StatusDocument>(_invocation.Status)).State == RunState.Paused);
+
+        tracker.Finish(RunState.Completed);
+        await writer.StopAsync();
+        Assert.Equal(RunState.Completed, (await AtomicJsonFile.ReadAsync<StatusDocument>(_invocation.Status)).State);
+    }
+
     // ---- orchestrator updates the status ----
 
     [Fact]
