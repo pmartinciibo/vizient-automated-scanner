@@ -1,5 +1,4 @@
 using Vizient.AutomatedScanner.Core.Models;
-using Vizient.AutomatedScanner.Core.State;
 
 namespace Vizient.AutomatedScanner.Core.Tools;
 
@@ -12,24 +11,23 @@ public sealed class RepoCloneTool : ITool
         Console.WriteLine($"I am {Name}: discovers, tracks and clones repos.");
 
         // What the last scan found, so each org, application and repo can be told apart as new or existing.
-        var store = new FoundOrgAppRepoStore(context.Config.StateRoot);
-        var lastSnapshot = await store.LoadAsync(cancellationToken);
+        await context.FoundState.EnsureLoadedAsync(cancellationToken);
+        var lastSnapshot = context.FoundState.LoadedSnapshot;
         context.Repos.SetPrior(lastSnapshot);
 
         // TODO: discover the orgs and repos at each source, clone or update them, and report each one with
-        // context.Repos.Record(...). Nothing is discovered yet.
+        // context.Repos.Record(...), including the HEAD SHA that is checked out. Nothing is discovered yet.
 
-        await SaveSnapshotAsync(context, store, lastSnapshot, incompleteOrgs: [], cancellationToken);
+        await SaveSnapshotAsync(context, lastSnapshot, incompleteOrgs: [], cancellationToken);
     }
 
     /// <summary>
     /// Writes back what this scan found. A scan that found no repos at all, when the last snapshot had some,
-    /// is treated as a failed discovery and leaves the snapshot alone. An error never means "everything was
+    /// is treated as a failed discovery and leaves the file alone. An error never means "everything was
     /// deleted".
     /// </summary>
     private static async Task SaveSnapshotAsync(
         RunContext context,
-        FoundOrgAppRepoStore store,
         FoundOrgAppRepoDocument lastSnapshot,
         IReadOnlyList<(string Source, string Org)> incompleteOrgs,
         CancellationToken cancellationToken)
@@ -42,14 +40,13 @@ public sealed class RepoCloneTool : ITool
             {
                 Type = "SnapshotNotUpdated",
                 Tool = "RepoClone",
-                Name = FoundOrgAppRepoStore.FileName,
+                Name = State.FoundOrgAppRepoStore.FileName,
                 At = DateTimeOffset.UtcNow
             });
             return;
         }
 
-        var next = FoundSnapshotBuilder.Build(
-            context.Request.RunId, DateTimeOffset.UtcNow, found, lastSnapshot, incompleteOrgs);
-        await store.SaveAsync(next, cancellationToken);
+        context.FoundState.ReplaceSnapshot(found, incompleteOrgs, DateTimeOffset.UtcNow);
+        await context.FoundState.SaveAsync(cancellationToken);
     }
 }

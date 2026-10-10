@@ -53,9 +53,14 @@ public sealed record RepoWorkContext(string Tool, RepoOutcome Repo, RunContext R
 /// Called before a repo is queued. A marker means this tool does not run for it (not applicable, unchanged,
 /// archived and so on). Null means run it.
 /// </param>
+/// <param name="OnDone">
+/// Called after a repo's done marker has been written, and only then. This is where the scan state for the
+/// repo is recorded, so state is never ahead of the markers.
+/// </param>
 public sealed record RepoWork(
     Func<RepoWorkContext, CancellationToken, Task<RepoWorkResult>> Scan,
-    Func<RepoOutcome, ToolSkippedMarker?>? SkipReason = null);
+    Func<RepoOutcome, ToolSkippedMarker?>? SkipReason = null,
+    Func<RepoOutcome, ToolDoneMarker, CancellationToken, Task>? OnDone = null);
 
 /// <summary>How a pass over the repos ended.</summary>
 /// <param name="Total">Repos the tool was to scan (not counting skipped ones).</param>

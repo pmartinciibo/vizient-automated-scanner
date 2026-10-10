@@ -35,7 +35,7 @@ in and out communication path.
 ## Key decisions already made
 
 - File-based in and out. Inputs: `engine.json`, `request.json`, `command.json`. Outputs:
-  `status.json` (rewritten every 5 s), `repo-changes.json`, `repos.json`, raw results and
+  `status.json` (rewritten every 5 s), `repo-changes.json`, raw results and
   per-repo/per-tool markers (`.done.json`, `.failed.json`, `.skipped.json`).
 - One run folder = one scan. Resume reuses the same folder. A new scheduled scan always
   gets a new folder.
@@ -92,7 +92,7 @@ dotnet run --project src/Engine -- run --request <path to request.json>
 
 Eligibility filter (active since 2025, code repos only for Semgrep/Snyk/Sonar); output
 format the downstream consumer expects; baseline comparability of scan settings; repo list
-completeness (about 4,800 known vs roughly 6,000 expected, seed `repos.json`); Vizient
+completeness (about 4,800 known vs roughly 6,000 expected, seed `FoundOrgAppRepo.json`); Vizient
 credentials and SecOps sign-off for TruffleHog verification; the locked-down account for
 build tools; Windows long paths; SonarQube edition and Java version; Archived/Disabled
 repo policy; who consumes run folders.

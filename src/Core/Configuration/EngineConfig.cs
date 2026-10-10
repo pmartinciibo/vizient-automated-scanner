@@ -13,7 +13,8 @@ public sealed record EngineConfig(
     string LogsRoot,
     int StatusIntervalSeconds = 5,
     int CommandIntervalSeconds = 2,
-    EngineSettings? Settings = null)
+    EngineSettings? Settings = null,
+    string? ExclusionsFile = null)
 {
     public const string FileName = "engine.json";
 
@@ -53,7 +54,8 @@ public sealed record EngineConfig(
             Resolve(baseDir, paths.Logs, nameof(paths.Logs)),
             document.StatusIntervalSeconds,
             document.CommandIntervalSeconds,
-            settings);
+            settings,
+            ResolveExclusions(baseDir, paths.Exclusions));
     }
 
     /// <summary>Creates any folder the engine writes into.</summary>
@@ -63,6 +65,20 @@ public sealed record EngineConfig(
         {
             Directory.CreateDirectory(dir);
         }
+    }
+
+    // Optional. If it is named it must exist: a missing file would quietly change every tool's config hash.
+    private static string? ResolveExclusions(string baseDir, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var path = Path.GetFullPath(value, baseDir);
+        return File.Exists(path)
+            ? path
+            : throw new InvalidDataException($"{FileName}: paths.exclusions file not found: '{path}'.");
     }
 
     private static string Resolve(string baseDir, string value, string name)

@@ -15,6 +15,12 @@ public sealed record RepoOutcome
     public string Name { get; init; } = string.Empty;
     public string? LocalPath { get; init; }
 
+    /// <summary>
+    /// The HEAD SHA that is actually checked out in the local clone, as RepoClone found it. The skip policy
+    /// compares it with the SHA of the last clean scan. Null means unknown, which means scan.
+    /// </summary>
+    public string? HeadSha { get; init; }
+
     /// <summary>A clone was already on disk when the run looked.</summary>
     public bool ExistedLocally { get; init; }
 

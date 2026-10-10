@@ -31,4 +31,7 @@ public sealed record EnginePathsConfig
     public string State { get; init; } = string.Empty;
     public string Tmp { get; init; } = string.Empty;
     public string Logs { get; init; } = string.Empty;
+
+    /// <summary>Optional. The shared exclusions file every tool uses. It is part of each tool config hash.</summary>
+    public string? Exclusions { get; init; }
 }

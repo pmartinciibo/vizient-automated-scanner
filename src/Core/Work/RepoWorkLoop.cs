@@ -230,17 +230,22 @@ public sealed class RepoWorkLoop
             result = RepoWorkResult.Failed("ToolError", $"{ex.GetType().Name}: {ex.Message}");
         }
 
-        await RecordAsync(repo, result, token);
+        await RecordAsync(repo, result, work, token);
     }
 
     // The marker goes down first. A repo only counts once its outcome is on disk.
-    private async Task RecordAsync(RepoOutcome repo, RepoWorkResult result, CancellationToken ct)
+    private async Task RecordAsync(RepoOutcome repo, RepoWorkResult result, RepoWork work, CancellationToken ct)
     {
         var markers = _context.Markers;
         switch (result.Kind)
         {
             case RepoWorkKind.Done:
                 await markers.WriteDoneAsync(_tool, repo.Key, result.DoneMarker!, ct);
+                if (work.OnDone is not null)
+                {
+                    await work.OnDone(repo, result.DoneMarker!, ct);
+                }
+
                 break;
             case RepoWorkKind.Failed:
                 await markers.WriteFailedAsync(_tool, repo.Key, result.FailedMarker!, ct);

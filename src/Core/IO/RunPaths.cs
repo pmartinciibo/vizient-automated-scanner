@@ -14,7 +14,6 @@ public sealed record RunPaths(string RunFolder)
     public string Status => Path.Combine(RunFolder, "status.json");
     public string ResultsSummary => Path.Combine(RunFolder, "results.json");
     public string RepoChanges => Path.Combine(RunFolder, "repo-changes.json");
-    public string ReposSnapshot => Path.Combine(RunFolder, "repos.json");
     public string Results => Path.Combine(RunFolder, "results");
 
     public string ResultsDir(string tool) => Path.Combine(Results, tool);
