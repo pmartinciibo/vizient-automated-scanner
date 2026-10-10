@@ -19,6 +19,7 @@ public static class EngineSettingsValidator
         ValidateSources(settings.Sources);
         ValidateRetry(settings.Retry);
         ValidateSkip(settings.Skip);
+        ValidateSecrets(settings.Secrets);
 
         foreach (var (name, tool) in settings.Tools)
         {
@@ -64,6 +65,19 @@ public static class EngineSettingsValidator
         }
     }
 
+    private static void ValidateSecrets(SecretsSettings secrets)
+    {
+        if (secrets.ExpiryWarnDays < 0)
+        {
+            throw Bad("secrets.expiryWarnDays cannot be negative.");
+        }
+
+        if (secrets.RequiredAccount is not null && string.IsNullOrWhiteSpace(secrets.RequiredAccount))
+        {
+            throw Bad("secrets.requiredAccount is blank. Leave it out to allow any account.");
+        }
+    }
+
     private static void ValidateSkip(SkipSettings skip)
     {
         if (skip.CanaryPercent is < 0 or > 100)
@@ -99,6 +113,11 @@ public static class EngineSettingsValidator
             throw Bad($"tools.Snyk.mode must be \"code\" or \"dependencies\", not \"{tool.Mode}\".");
         }
 
+        if (name == ToolNames.Rapid7)
+        {
+            ValidateRapid7(tool);
+        }
+
         if (tool.RunAs is { } runAs && (string.IsNullOrWhiteSpace(runAs.Account) || string.IsNullOrWhiteSpace(runAs.PasswordSecret)))
         {
             throw Bad($"tools.{name}.runAs needs both account and passwordSecret.");
@@ -109,6 +128,43 @@ public static class EngineSettingsValidator
             if (string.IsNullOrWhiteSpace(variable) || string.IsNullOrWhiteSpace(secret))
             {
                 throw Bad($"tools.{name}.env must map an environment variable name to a secret name.");
+            }
+        }
+    }
+
+    private static readonly string[] Rapid7AuthModes = ["api_key", "console_token"];
+    private static readonly string[] Rapid7Areas = ["applications", "scans", "vulnerabilities", "reports"];
+
+    private static void ValidateRapid7(ToolSettings tool)
+    {
+        if (tool.BaseUrl is not null
+            && !(Uri.TryCreate(tool.BaseUrl, UriKind.Absolute, out var url) && url.Scheme is "http" or "https"))
+        {
+            throw Bad("tools.Rapid7.baseUrl must be a full http or https address.");
+        }
+
+        if (tool.AuthMode is not null && !Rapid7AuthModes.Contains(tool.AuthMode))
+        {
+            throw Bad($"tools.Rapid7.authMode must be \"api_key\" or \"console_token\", not \"{tool.AuthMode}\".");
+        }
+
+        if (tool.PageSize is < 1)
+        {
+            throw Bad("tools.Rapid7.pageSize must be at least 1.");
+        }
+
+        if (tool.MaxPages is < 0)
+        {
+            throw Bad("tools.Rapid7.maxPages cannot be negative. Use 0 or leave it out for all pages.");
+        }
+
+        if (tool.Areas is { } areas)
+        {
+            var unknown = areas.Except(Rapid7Areas).ToList();
+            if (areas.Count == 0 || unknown.Count > 0)
+            {
+                throw Bad($"tools.Rapid7.areas must be some of: {string.Join(", ", Rapid7Areas)}." +
+                    (unknown.Count > 0 ? $" Not known: {string.Join(", ", unknown)}." : string.Empty));
             }
         }
     }

@@ -12,6 +12,7 @@ public sealed record EngineConfigDocument
     public bool ScanArchived { get; init; }
     public SkipSettings Skip { get; init; } = new();
     public RetrySettings Retry { get; init; } = new();
+    public SecretsSettings Secrets { get; init; } = new();
     public Dictionary<string, ToolSettings> Tools { get; init; } = new();
 
     public EngineSettings ToSettings() => new()
@@ -20,6 +21,7 @@ public sealed record EngineConfigDocument
         ScanArchived = ScanArchived,
         Skip = Skip,
         Retry = Retry,
+        Secrets = Secrets,
         Tools = Tools
     };
 }

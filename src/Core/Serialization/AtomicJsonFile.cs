@@ -61,6 +61,10 @@ public static class AtomicJsonFile
             },
             cancellationToken);
 
+    /// <summary>Writes bytes with the same temp-file-then-rename guarantee as <see cref="WriteAsync{T}"/>.</summary>
+    public static Task WriteBytesAsync(string path, byte[] bytes, CancellationToken cancellationToken = default) =>
+        ReplaceAsync(path, stream => stream.WriteAsync(bytes, cancellationToken).AsTask(), cancellationToken);
+
     /// <summary>Copies a file with the same temp-file-then-rename guarantee as <see cref="WriteAsync{T}"/>.</summary>
     public static async Task CopyAsync(
         string sourcePath,

@@ -483,3 +483,7 @@ $RECYCLE.BIN/
 
 # Integration runtime data (dev stand-in for the production disk locations)
 Integration/
+
+# The DPAPI-encrypted secrets file and its backup. Encrypted, but they must never be committed.
+secrets.dat
+secrets.dat.bak

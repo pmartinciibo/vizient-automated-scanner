@@ -4,6 +4,7 @@ using Vizient.AutomatedScanner.Core.Control;
 using Vizient.AutomatedScanner.Core.IO;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Processes;
+using Vizient.AutomatedScanner.Core.Secrets;
 using Vizient.AutomatedScanner.Core.Serialization;
 using Vizient.AutomatedScanner.Core.State;
 using Vizient.AutomatedScanner.Core.Status;
@@ -27,7 +28,8 @@ public sealed record RunContext(
     RepoReport Repos,
     CommandLog Commands,
     IProcessRunner Processes,
-    FoundOrgAppRepoState FoundState)
+    FoundOrgAppRepoState FoundState,
+    RunSecrets Secrets)
 {
     /// <summary>
     /// A tool is on unless the request or engine.json turns it off. A request can also turn on a tool that
@@ -111,7 +113,7 @@ public sealed record RunContext(
             await AtomicJsonFile.CopyAsync(requestPath, paths.Request, cancellationToken);
         }
 
-        return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands, new ProcessRunner(), new FoundOrgAppRepoState(new FoundOrgAppRepoStore(config.StateRoot), request.RunId));
+        return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands, new ProcessRunner(), new FoundOrgAppRepoState(new FoundOrgAppRepoStore(config.StateRoot), request.RunId), new RunSecrets(config.SecretsFile, config.Current));
     }
 
     /// <summary>

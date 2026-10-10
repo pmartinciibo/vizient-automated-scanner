@@ -20,7 +20,9 @@
     "Rapid7": {
       "enabled": true,
       "tokenSecret": "rapid7-token",
-      "baseUrl": "https://example.invalid/api"
+      "baseUrl": "https://us.api.insight.rapid7.com/ias/v1",
+      "authMode": "api_key",
+      "pageSize": 100
     },
     "CheckMarx": {
       "enabled": true,

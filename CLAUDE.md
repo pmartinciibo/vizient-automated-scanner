@@ -57,6 +57,13 @@ in and out communication path.
   `engine secrets set|list|remove|check`. Each tool gets only its own secrets through
   environment variables. Never log or write secret values. Redact tool output before
   storing it.
+  - The file is `secrets.dat` in the project root (gitignored, never commit it). Each build
+    copies it beside the executable, which is where the engine reads it, like `engine.json`.
+    To manage the root copy: `dotnet run --project src/Engine -- secrets set <name> --file secrets.dat`
+    (run from the project root; `--stdin` to pipe the value; there is no `--value` option).
+    Without `--file` the commands use the copy beside the executable.
+  - DPAPI ties the file to the Windows account and machine that wrote it. A dev copy does not
+    work on the VM: run `engine secrets set` there, as the service account.
 - Snyk (dependency mode) and SonarDotNet build the code they scan, so they run under a
   locked-down account (`runAs`).
 

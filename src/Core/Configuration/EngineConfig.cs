@@ -17,6 +17,13 @@ public sealed record EngineConfig(
     string? ExclusionsFile = null)
 {
     public const string FileName = "engine.json";
+    public const string SecretsFileName = "secrets.dat";
+
+    /// <summary>
+    /// The secrets file, beside engine.json and so beside the executable. Like engine.json it is found where the
+    /// engine runs from, never searched for.
+    /// </summary>
+    public string SecretsFile => Path.Combine(Path.GetDirectoryName(ConfigFile)!, SecretsFileName);
 
     /// <summary>Sources, retry, skip and tool settings. Empty when engine.json has none, so built-in defaults apply.</summary>
     public EngineSettings Current => Settings ?? new EngineSettings();

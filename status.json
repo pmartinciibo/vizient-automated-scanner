@@ -1,15 +1,15 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-10T20-35-46Z",
+  "runId": "2026-10-10T22-13-12Z",
   "revision": 1,
   "attempt": 1,
   "state": "Completed",
   "paused": false,
-  "pid": 32448,
+  "pid": 8104,
   "mode": "Normal",
-  "startedAt": "2026-10-10T20:35:46.1627459+00:00",
-  "updatedAt": "2026-10-10T20:35:46.3419885+00:00",
-  "endedAt": "2026-10-10T20:35:46.3404426+00:00",
+  "startedAt": "2026-10-10T22:13:12.5103632+00:00",
+  "updatedAt": "2026-10-10T22:13:14.5121824+00:00",
+  "endedAt": "2026-10-10T22:13:14.5108825+00:00",
   "phase": "Finalize",
   "overall": {
     "percent": 100,
@@ -20,8 +20,8 @@
     {
       "name": "Rapid7",
       "status": "Completed",
-      "done": 0,
-      "total": 0,
+      "done": 117,
+      "total": 117,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
@@ -107,7 +107,58 @@
     }
   ],
   "effective": {},
-  "alerts": [],
+  "alerts": [
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
+      "name": "ado-pat",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-10T22:13:12.5712638+00:00"
+    },
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
+      "name": "buildtools-account-password",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-10T22:13:12.5712638+00:00"
+    },
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
+      "name": "checkmarx-token",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-10T22:13:12.5712638+00:00"
+    },
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
+      "name": "github-token",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-10T22:13:12.5712638+00:00"
+    },
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
+      "name": "sonar-token",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-10T22:13:12.5712638+00:00"
+    }
+  ],
   "lastCommandSeq": 0,
   "commandAcks": []
 }

@@ -2,12 +2,20 @@ using Vizient.AutomatedScanner.Core;
 using Vizient.AutomatedScanner.Core.Configuration;
 using Vizient.AutomatedScanner.Core.Control;
 using Vizient.AutomatedScanner.Core.Models;
+using Vizient.AutomatedScanner.Core.Secrets;
 using Vizient.AutomatedScanner.Core.Status;
 using Vizient.AutomatedScanner.Core.Tools;
+using Vizient.AutomatedScanner.Engine;
+
+if (args.Length > 0 && args[0] == "secrets")
+{
+    return await RunSecretsCommandAsync(args[1..]);
+}
 
 if (args.Length != 3 || args[0] != "run" || args[1] != "--request")
 {
     Console.Error.WriteLine("Usage: engine run --request <path to request.json>");
+    Console.Error.WriteLine("       engine secrets set|list|remove|check ...   (engine secrets for details)");
     return 2;
 }
 
@@ -34,6 +42,33 @@ catch (Exception ex)
 Console.WriteLine($"Config: {context.Config.ConfigFile}");
 Console.WriteLine($"Run:    {context.Paths.RunId} ({context.Request.Mode}, requested by {context.Request.RequestedBy})");
 Console.WriteLine($"Folder: {context.Paths.RunFolder}");
+
+// The secrets file reads and the secrets the tools need are there and in date. For now a problem is a warning
+// and an alert, not the end of the run: no tool uses a secret yet. Once they do, a missing or expired secret
+// (or a file that will not decrypt) must stop the run with exit code 2, as the design says.
+try
+{
+    var secretsCheck = await SecretsPreflight.RunAsync(context);
+    if (secretsCheck.FileError is not null)
+    {
+        Console.Error.WriteLine($"Warning: {secretsCheck.FileError}");
+    }
+
+    foreach (var finding in secretsCheck.Findings)
+    {
+        var problem = finding.Issue switch
+        {
+            SecretIssue.Missing => "has not been set",
+            SecretIssue.Expired => $"expired on {finding.ExpiresAt:yyyy-MM-dd}",
+            _ => $"expires on {finding.ExpiresAt:yyyy-MM-dd}"
+        };
+        Console.Error.WriteLine($"Warning: secret '{finding.Name}' {problem} (needed by {finding.RequiredBy}).");
+    }
+}
+catch (Exception ex) when (ex is IOException or PlatformNotSupportedException)
+{
+    Console.Error.WriteLine($"Warning: the secrets could not be checked: {ex.Message}");
+}
 
 // Ctrl+C stops the run gracefully so status.json still ends in a terminal state.
 using var cancellation = new CancellationTokenSource();
@@ -141,3 +176,19 @@ catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 }
 
 return exitCode;
+
+static async Task<int> RunSecretsCommandAsync(string[] secretsArgs)
+{
+    EngineConfig config;
+    try
+    {
+        config = await EngineConfig.LoadAsync();
+    }
+    catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException)
+    {
+        Console.Error.WriteLine($"Fatal: {ex.Message}");
+        return 2;
+    }
+
+    return await SecretsCommand.RunAsync(secretsArgs, config, new SystemSecretsConsole());
+}

@@ -19,6 +19,12 @@ public sealed record ProcessSpec
     /// </summary>
     public IReadOnlyDictionary<string, string> SecretEnvironment { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>
+    /// Environment variable names to remove from what the child inherits from the engine, before the two sets above are
+    /// added. Keeps one tool from picking up another tool's secret that happens to be set in the engine's environment.
+    /// </summary>
+    public IReadOnlyCollection<string> RemoveEnvironment { get; init; } = [];
+
     /// <summary>Other values to mask in captured output, for secrets that reach the tool some other way.</summary>
     public IReadOnlyCollection<string> SecretValues { get; init; } = [];
 

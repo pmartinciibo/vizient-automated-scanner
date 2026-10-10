@@ -195,6 +195,11 @@ public sealed class ProcessRunner : IProcessRunner
             startInfo.WorkingDirectory = spec.WorkingDirectory;
         }
 
+        foreach (var name in spec.RemoveEnvironment)
+        {
+            startInfo.Environment.Remove(name);
+        }
+
         foreach (var (name, value) in spec.Environment.Concat(spec.SecretEnvironment))
         {
             startInfo.Environment[name] = value;

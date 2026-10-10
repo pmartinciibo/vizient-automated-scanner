@@ -10,6 +10,7 @@ public sealed record EngineSettings
     public bool ScanArchived { get; init; }
     public SkipSettings Skip { get; init; } = new();
     public RetrySettings Retry { get; init; } = new();
+    public SecretsSettings Secrets { get; init; } = new();
 
     /// <summary>Keyed by tool name. A tool with no entry uses the built-in defaults.</summary>
     public Dictionary<string, ToolSettings> Tools { get; init; } = new();
@@ -36,6 +37,19 @@ public sealed record SkipSettings
     public int CanaryPercent { get; init; } = 5;
 
     public int FullRescanEveryDays { get; init; } = 30;
+}
+
+/// <summary>How the secrets file is managed and checked. The secrets themselves are in secrets.dat, never here.</summary>
+public sealed record SecretsSettings
+{
+    /// <summary>
+    /// If set, "secrets set" and "secrets remove" refuse to run as any other Windows account. The file can only be
+    /// read by the account that wrote it, so this stops someone creating one nobody can use.
+    /// </summary>
+    public string? RequiredAccount { get; init; }
+
+    /// <summary>A secret that expires within this many days raises an ExpiringSecret alert.</summary>
+    public int ExpiryWarnDays { get; init; } = 30;
 }
 
 public sealed record RetrySettings
@@ -68,6 +82,24 @@ public sealed record ToolSettings
     /// <summary>Rapid7 and CheckMarx.</summary>
     public string? BaseUrl { get; init; }
     public string? TokenSecret { get; init; }
+
+    /// <summary>
+    /// Rapid7 only. How the token is sent: "api_key" (an X-Api-Key header, for InsightAppSec) or "console_token"
+    /// (HTTP Basic with the token as the user name). Defaults to "api_key".
+    /// </summary>
+    public string? AuthMode { get; init; }
+
+    /// <summary>Rapid7 only. Records per request. Defaults to 100.</summary>
+    public int? PageSize { get; init; }
+
+    /// <summary>Rapid7 only. Stop after this many pages of each area, for a trial run. 0 or left out means all pages.</summary>
+    public int? MaxPages { get; init; }
+
+    /// <summary>
+    /// Rapid7 only. Which of applications, vulnerabilities, scans and reports to export. Left out means applications
+    /// and vulnerabilities. Scans and reports, if listed, are added to each application alongside its vulnerabilities.
+    /// </summary>
+    public List<string>? Areas { get; init; }
 
     /// <summary>SonarQube.</summary>
     public string? ServerUrl { get; init; }
