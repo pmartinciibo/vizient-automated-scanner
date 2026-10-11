@@ -21,9 +21,34 @@
       "maxParallel": null,
       "timeoutMinutes": null,
       "sources": {
-        "ADO": { "enabled": true },
+        "ADO": { "enabled": false },
         "GitHub": { "enabled": true }
       }
+    },
+    "TruffleHog": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "Semgrep": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "Snyk": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "SonarStandard": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "SonarDotNet": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
     }
   },
   "scope": {

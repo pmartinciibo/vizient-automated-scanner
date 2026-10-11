@@ -11,7 +11,7 @@
   "commandIntervalSeconds": 2,
   "sources": [
     { "source": "ADO",    "org": "vizientinc",  "tokenSecret": "ado-pat" },
-    { "source": "GitHub", "org": "RnD-Vizient", "tokenSecret": "github-token" }
+    { "source": "GitHub", "tokenSecret": "github-token" }
   ],
   "scanArchived": false,
   "skip": { "enabled": true, "canaryPercent": 5, "fullRescanEveryDays": 30 },

@@ -67,7 +67,7 @@ public class EngineSettingsTests : IDisposable
         var config = await LoadAsync("""
             "sources": [
               { "source": "ADO", "org": "vizientinc", "tokenSecret": "ado-pat" },
-              { "source": "GitHub", "org": "RnD-Vizient", "tokenSecret": "github-token" }
+              { "source": "GitHub", "tokenSecret": "github-token" }
             ],
             "scanArchived": true,
             "skip": { "enabled": false, "canaryPercent": 10, "fullRescanEveryDays": 14 },
@@ -87,7 +87,7 @@ public class EngineSettingsTests : IDisposable
             """);
 
         var settings = config.Current;
-        Assert.Equal(["ADO|vizientinc|ado-pat", "GitHub|RnD-Vizient|github-token"],
+        Assert.Equal(["ADO|vizientinc|ado-pat", "GitHub||github-token"],
             settings.Sources.Select(s => $"{s.Source}|{s.Org}|{s.TokenSecret}"));
         Assert.True(settings.ScanArchived);
         Assert.Equal((false, 10, 14), (settings.Skip.Enabled, settings.Skip.CanaryPercent, settings.Skip.FullRescanEveryDays));
@@ -152,10 +152,10 @@ public class EngineSettingsTests : IDisposable
     }
 
     [Fact]
-    public async Task TheSameOrgInTwoDifferentSourcesIsFine()
+    public async Task AnAdoOrgAndAGitHubSourceAreFine()
     {
         var config = await LoadAsync("""
-            "sources": [ { "source": "ADO", "org": "acme" }, { "source": "GitHub", "org": "acme" } ]
+            "sources": [ { "source": "ADO", "org": "acme" }, { "source": "GitHub", "tokenSecret": "t" } ]
             """);
 
         Assert.Equal(2, config.Current.Sources.Count);

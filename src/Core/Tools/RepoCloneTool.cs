@@ -59,73 +59,158 @@ public sealed class RepoCloneTool(
         var ado = new AdoLister(api);
         var entra = new AdoEntraAccess(context.Processes, settings, clock, AddSecret);
 
-        // 1. Discover. One org that cannot be listed is flagged and its repos are carried forward, not dropped.
+        // 1. Discover. An org that cannot be listed is flagged and its repos are carried forward, not dropped.
         var discovered = new List<DiscoveredRepo>();
         var credentials = new Dictionary<string, IGitCredential>(StringComparer.OrdinalIgnoreCase);
         var incompleteOrgs = new List<(string Source, string Org)>();
+        var failures = new List<string>();
+        var listedGitHubOrgs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var listedOrgs = 0;
+
+        // The GitHub orgs the last scan knew, for keeping them when this scan cannot say what the token can see.
+        List<string> KnownGitHubOrgs() => prior.Values
+            .Where(r => r.Source == SourceSettings.GitHub)
+            .Select(r => r.OrgName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        void Fail(string source, string org, string label, Exception ex)
+        {
+            failures.Add(label);
+            context.Status.AddAlert(new StatusAlert
+            {
+                Type = "OrgDiscoveryFailed",
+                Tool = Name,
+                Name = $"{label}: {Mask(ex.Message)}",
+                At = clock.GetUtcNow()
+            });
+            if (org.Length > 0)
+            {
+                incompleteOrgs.Add((source, org));
+            }
+        }
 
         // A source the request turns off is not listed or cloned. What the last scan knew of its repos is kept, as for an
-        // org that could not be listed, but it is no failure and raises no alert.
+        // org that could not be listed, but it is no failure.
         var requested = sources.Where(s => context.Request.IsSourceEnabled(s.Source)).ToList();
-        var leftOut = sources.Except(requested).Select(s => (s.Source, s.Org.Trim())).ToList();
+        var leftOut = new List<(string Source, string Org)>();
+        foreach (var off in sources.Except(requested))
+        {
+            if (off.Source == SourceSettings.GitHub)
+            {
+                leftOut.AddRange(KnownGitHubOrgs().Select(o => (off.Source, o)));
+            }
+            else
+            {
+                leftOut.Add((off.Source, off.Org.Trim()));
+            }
+
+            // Not a problem, but the status should say why these repos are not in this run.
+            context.Status.AddAlert(new StatusAlert
+            {
+                Type = "SourceLeftOut",
+                Tool = Name,
+                Name = off.Source == SourceSettings.GitHub
+                    ? "GitHub: turned off by the request"
+                    : $"{off.Source}/{off.Org.Trim()}: turned off by the request",
+                At = clock.GetUtcNow()
+            });
+        }
+
         if (requested.Count == 0)
         {
             throw new InvalidOperationException(
                 "request.json turns off every source RepoClone has. To skip RepoClone for this run, turn off the RepoClone tool instead.");
         }
 
-        foreach (var (leftSource, leftOrg) in leftOut)
-        {
-            // Not a problem, but the status should say why these repos are not in this run.
-            context.Status.AddAlert(new StatusAlert
-            {
-                Type = "SourceLeftOut",
-                Tool = Name,
-                Name = $"{leftSource}/{leftOrg}: turned off by the request",
-                At = clock.GetUtcNow()
-            });
-        }
-
         foreach (var source in requested)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var org = source.Org.Trim();
 
-            try
+            if (source.Source == SourceSettings.GitHub)
             {
+                // The token says which orgs there are. Then each org is listed on its own, so one that fails costs only itself.
                 IGitCredential credential;
-                List<DiscoveredRepo> listed;
-
-                if (source.Source == SourceSettings.GitHub)
+                List<string> orgs;
+                try
                 {
                     var token = await RequireSecretAsync(context, source, cancellationToken);
                     credential = new FixedCredential(GitAuth.Basic("https://github.com/", "x-access-token", token, "Bearer"));
-                    listed = await gitHub.ListAsync(org, await credential.GetAsync(cancellationToken), cancellationToken);
+                    orgs = await gitHub.ListOrgsAsync(await credential.GetAsync(cancellationToken), cancellationToken);
                 }
-                else if (!string.IsNullOrWhiteSpace(source.TokenSecret))
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Which orgs the token sees is unknown, so every GitHub org known from before is kept, not dropped.
+                    foreach (var known in KnownGitHubOrgs())
+                    {
+                        incompleteOrgs.Add((SourceSettings.GitHub, known));
+                    }
+
+                    Fail(SourceSettings.GitHub, string.Empty, "GitHub (organizations of the token)", ex);
+                    continue;
+                }
+
+                foreach (var org in orgs)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    listedGitHubOrgs.Add(org);
+
+                    try
+                    {
+                        var listed = await gitHub.ListAsync(org, await credential.GetAsync(cancellationToken), cancellationToken);
+                        credentials[RepoSynchronizer.CredentialKey(SourceSettings.GitHub, org)] = credential;
+                        discovered.AddRange(listed);
+                        listedOrgs++;
+                        context.Status.UpdateStep(Name, step => step with { Message = $"listed {listed.Count} repos in GitHub/{org}" });
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        Fail(SourceSettings.GitHub, org, $"GitHub/{org}", ex);
+                    }
+                }
+
+                continue;
+            }
+
+            var adoOrg = source.Org.Trim();
+            try
+            {
+                IGitCredential credential;
+                if (!string.IsNullOrWhiteSpace(source.TokenSecret))
                 {
                     var pat = await RequireSecretAsync(context, source, cancellationToken);
                     credential = new FixedCredential(GitAuth.Basic(AdoEntraAccess.HostPrefix, string.Empty, pat, "Basic"));
-                    listed = await ado.ListAsync(org, await credential.GetAsync(cancellationToken), cancellationToken);
                 }
                 else
                 {
-                    credential = await entra.ResolveAsync(org, ado, cancellationToken);
-                    listed = await ado.ListAsync(org, await credential.GetAsync(cancellationToken), cancellationToken);
+                    credential = await entra.ResolveAsync(adoOrg, ado, cancellationToken);
                 }
 
-                credentials[RepoSynchronizer.CredentialKey(source.Source, org)] = credential;
+                var listed = await ado.ListAsync(adoOrg, await credential.GetAsync(cancellationToken), cancellationToken);
+                credentials[RepoSynchronizer.CredentialKey(source.Source, adoOrg)] = credential;
                 discovered.AddRange(listed);
-                context.Status.UpdateStep(Name, step => step with { Message = $"listed {listed.Count} repos in {source.Source}/{org}" });
+                listedOrgs++;
+                context.Status.UpdateStep(Name, step => step with { Message = $"listed {listed.Count} repos in {source.Source}/{adoOrg}" });
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                incompleteOrgs.Add((source.Source, org));
+                Fail(source.Source, adoOrg, $"{source.Source}/{adoOrg}", ex);
+            }
+        }
+
+        // A GitHub org the last scan knew that the token no longer lists is kept and flagged, not dropped: losing access
+        // (a token that expired, a missing SSO authorization) looks the same as an org that is really gone.
+        if (requested.Any(s => s.Source == SourceSettings.GitHub))
+        {
+            var alreadyKept = incompleteOrgs.Concat(leftOut).Select(o => $"{o.Source}|{o.Org}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var known in KnownGitHubOrgs().Where(o => !listedGitHubOrgs.Contains(o) && !alreadyKept.Contains($"{SourceSettings.GitHub}|{o}")))
+            {
+                incompleteOrgs.Add((SourceSettings.GitHub, known));
                 context.Status.AddAlert(new StatusAlert
                 {
-                    Type = "OrgDiscoveryFailed",
+                    Type = "OrgNotListed",
                     Tool = Name,
-                    Name = $"{source.Source}/{org}: {Mask(ex.Message)}",
+                    Name = $"GitHub/{known}: not among the organizations of the token this time, kept from the last scan",
                     At = clock.GetUtcNow()
                 });
             }
@@ -133,10 +218,12 @@ public sealed class RepoCloneTool(
 
         // Nothing could be listed at all: the sources, the tokens or the network are wrong. Fail the step and leave
         // the last snapshot exactly as it was.
-        if (incompleteOrgs.Count == requested.Count)
+        if (listedOrgs == 0)
         {
             throw new InvalidOperationException(
-                $"No organization could be listed ({string.Join(", ", incompleteOrgs.Select(o => $"{o.Source}/{o.Org}"))}). See the OrgDiscoveryFailed alerts.");
+                failures.Count > 0
+                    ? $"No organization could be listed ({string.Join(", ", failures)}). See the OrgDiscoveryFailed alerts."
+                    : "No organization could be listed: the token or tokens in sources see no organizations.");
         }
 
         // 2. Report what is known for every repo before any cloning, so results.json shows them even if the run stops.

@@ -288,7 +288,7 @@ public class SecretsRuntimeTests : IDisposable
     {
         var settings = new EngineSettings
         {
-            Sources = [new SourceSettings { Source = "GitHub", Org = "x", TokenSecret = "github-token" }],
+            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "github-token" }],
             Tools = new() { ["Snyk"] = new ToolSettings { Env = new() { ["SNYK_TOKEN"] = "snyk-token" } } }
         };
 

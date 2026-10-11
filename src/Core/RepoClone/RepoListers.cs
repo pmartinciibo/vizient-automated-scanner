@@ -11,6 +11,43 @@ internal sealed class GitHubLister(ApiRequester api, string apiBase = "https://a
 {
     private const int PageSize = 100;
 
+    /// <summary>
+    /// Every organization the token's user belongs to (GET /user/orgs), which includes the orgs of an enterprise the
+    /// user is a member of. Nothing is named in engine.json: what the token can see is what is scanned.
+    /// </summary>
+    public async Task<List<string>> ListOrgsAsync(GitAuth auth, CancellationToken cancellationToken)
+    {
+        var orgs = new List<string>();
+
+        for (var page = 1; ; page++)
+        {
+            var url = $"{apiBase.TrimEnd('/')}/user/orgs?per_page={PageSize}&page={page}";
+            using var document = await api.GetJsonAsync(url, () => Request(url, auth), cancellationToken);
+
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new RepoSourceException("GitHub did not return a list of organizations.");
+            }
+
+            var count = 0;
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                count++;
+                if (!item.TryGetProperty("login", out var login) || login.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(login.GetString()))
+                {
+                    throw new RepoSourceException("GitHub returned an organization without a login.");
+                }
+
+                orgs.Add(login.GetString()!);
+            }
+
+            if (count < PageSize)
+            {
+                return orgs.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            }
+        }
+    }
+
     public async Task<List<DiscoveredRepo>> ListAsync(string org, GitAuth auth, CancellationToken cancellationToken)
     {
         var repos = new List<DiscoveredRepo>();

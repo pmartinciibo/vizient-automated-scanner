@@ -1,12 +1,12 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-11T03-00-22Z",
+  "runId": "2026-10-11T13-53-44Z",
   "requestFile": "C:\\envs\\Vizient\\AutomatedScanner\\request.json",
-  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\2026-10-11T03-00-22Z",
+  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\2026-10-11T13-53-44Z",
   "state": "CompletedWithFlags",
   "exitCode": 1,
-  "startedAt": "2026-10-11T03:00:22.6385073+00:00",
-  "endedAt": "2026-10-11T03:00:22.773678+00:00",
+  "startedAt": "2026-10-11T13:53:44.6544749+00:00",
+  "endedAt": "2026-10-11T13:53:45.3781431+00:00",
   "error": null,
   "tools": [
     {
@@ -22,32 +22,32 @@
     {
       "name": "RepoClone",
       "status": "Failed",
-      "message": "InvalidOperationException: No organization could be listed (ADO/vizientinc, GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
+      "message": "InvalidOperationException: No organization could be listed (GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
     },
     {
       "name": "TruffleHog",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "Semgrep",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "Snyk",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "SonarStandard",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "SonarDotNet",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     }
   ],
   "repoTotals": {

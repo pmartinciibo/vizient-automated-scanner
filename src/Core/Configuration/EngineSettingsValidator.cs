@@ -41,9 +41,29 @@ public static class EngineSettingsValidator
                 throw Bad($"{where}.source must be \"{SourceSettings.Ado}\" or \"{SourceSettings.GitHub}\", not \"{source.Source}\".");
             }
 
+            if (source.Source == SourceSettings.GitHub)
+            {
+                if (!string.IsNullOrWhiteSpace(source.Org))
+                {
+                    throw Bad($"{where}.org must be left out for GitHub. The organizations are discovered from the token, not named.");
+                }
+
+                if (string.IsNullOrWhiteSpace(source.TokenSecret))
+                {
+                    throw Bad($"{where}.tokenSecret is required for GitHub.");
+                }
+
+                if (!seen.Add($"GitHub|{source.TokenSecret.Trim()}"))
+                {
+                    throw Bad($"{where} uses GitHub token secret \"{source.TokenSecret}\" a second time.");
+                }
+
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(source.Org))
             {
-                throw Bad($"{where}.org is required.");
+                throw Bad($"{where}.org is required for Azure DevOps.");
             }
 
             if (!seen.Add($"{source.Source}|{source.Org.Trim()}"))

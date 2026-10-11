@@ -19,7 +19,10 @@ public sealed record EngineSettings
     public ToolSettings Tool(string name) => Tools.GetValueOrDefault(name) ?? new ToolSettings();
 }
 
-/// <summary>An organization to scan, and the name of the secret that holds its token.</summary>
+/// <summary>
+/// A place to find repos, and the name of the secret that holds its token. A GitHub entry names no org: the engine
+/// asks GitHub which organizations the token belongs to and scans them all. An Azure DevOps entry names its org.
+/// </summary>
 public sealed record SourceSettings
 {
     public const string Ado = "ADO";

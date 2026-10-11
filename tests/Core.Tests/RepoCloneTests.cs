@@ -269,7 +269,7 @@ public class RepoCloneTests : IDisposable
         await new RepoCloneTool(sources, (_, _) => Task.CompletedTask).RunAsync(context);
 
         Assert.Equal(103, context.Repos.Snapshot().Count);
-        Assert.Equal(2, sources.Requests.Count);
+        Assert.Equal(2, sources.Requests.Count(r => r.Uri.AbsolutePath.EndsWith("/repos")));
         Assert.All(sources.Requests, r => Assert.Equal("Bearer " + RepoCloneRun.Token, r.Authorization));
     }
 
@@ -280,12 +280,12 @@ public class RepoCloneTests : IDisposable
         var other = _run.Origin("other");
         _run.With(s => s with
         {
-            Sources = [new SourceSettings { Source = "GitHub", Org = "acme", TokenSecret = "gh-token" },
-                       new SourceSettings { Source = "GitHub", Org = "globex", TokenSecret = "gh-token" }]
+            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" }]
         });
         Func<Uri, bool> isGlobex = uri => uri.AbsolutePath.Contains("/orgs/globex/");
         var healthy = new FakeSources
         {
+            Orgs = ["acme", "globex"],
             Respond = uri => uri.Query.Contains("page=1")
                 ? FakeSources.GitHubList(FakeSources.GitHubRepo(isGlobex(uri) ? 20 : 10, isGlobex(uri) ? "other" : "one", isGlobex(uri) ? other.Path : one.Path))
                 : FakeSources.GitHubList()
@@ -294,6 +294,7 @@ public class RepoCloneTests : IDisposable
 
         var broken = new FakeSources
         {
+            Orgs = ["acme", "globex"],
             Respond = uri => isGlobex(uri)
                 ? FakeRapid7.Json(HttpStatusCode.Forbidden, $"{{\"message\":\"nope {RepoCloneRun.Token}\"}}")
                 : healthy.Respond(uri)
@@ -327,7 +328,7 @@ public class RepoCloneTests : IDisposable
     [Fact]
     public async Task AMissingTokenSecretFailsThatOrgWithoutLeakingAnything()
     {
-        _run.With(s => s with { Sources = [new SourceSettings { Source = "GitHub", Org = "acme", TokenSecret = "nope" }] });
+        _run.With(s => s with { Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "nope" }] });
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _run.RunAsync(new FakeSources()));
 
@@ -447,7 +448,7 @@ public class RepoCloneTests : IDisposable
     private void ConfigureBoth() =>
         _run.With(s => s with
         {
-            Sources = [new SourceSettings { Source = "GitHub", Org = "acme", TokenSecret = "gh-token" },
+            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" },
                        new SourceSettings { Source = "ADO", Org = "vz", TokenSecret = "gh-token" }]
         });
 
@@ -571,6 +572,133 @@ public class RepoCloneTests : IDisposable
         Assert.True(context.Markers.IsDone("RepoClone", "gh-1"));
     }
 
+    // ---- GitHub orgs are discovered from the token, never named ----
+
+    private static FakeSources OrgsWithRepos(Dictionary<string, FakeOrigin> origins, Func<Uri, HttpResponseMessage?>? orgsRespond = null) => new()
+    {
+        Orgs = origins.Keys.ToArray(),
+        OrgsRespond = orgsRespond,
+        Respond = uri =>
+        {
+            var org = uri.AbsolutePath.Split('/')[2];
+            return uri.Query.Contains("page=1") && origins.TryGetValue(org, out var origin)
+                ? FakeSources.GitHubList(FakeSources.GitHubRepo(Array.IndexOf(origins.Keys.ToArray(), org) + 1, $"{org}-repo", origin.Path))
+                : FakeSources.GitHubList();
+        }
+    };
+
+    [Fact]
+    public async Task EveryOrgTheTokenBelongsToIsDiscoveredAndItsReposCloned()
+    {
+        var origins = new Dictionary<string, FakeOrigin>
+        {
+            ["alpha"] = _run.Origin("a"),
+            ["beta"] = _run.Origin("b"),
+            ["gamma"] = _run.Origin("c")
+        };
+        var sources = OrgsWithRepos(origins);
+
+        var context = await _run.RunAsync(sources);
+
+        Assert.Equal(["alpha", "beta", "gamma"], context.Repos.Snapshot().Select(r => r.Org).Order());
+        Assert.All(context.Repos.Snapshot(), r => Assert.True(context.Markers.IsDone("RepoClone", r.Key)));
+        Assert.Contains(sources.Requests, r => r.Uri.AbsolutePath == "/user/orgs");
+        Assert.Equal(["alpha", "beta", "gamma"], (await ReadStateAsync()).Orgs.Select(o => o.Name).Order());
+    }
+
+    [Fact]
+    public async Task MoreThanAHundredOrgsAreAllDiscovered()
+    {
+        var last = _run.Origin("last");
+        var sources = new FakeSources
+        {
+            Orgs = Enumerable.Range(1, 130).Select(i => $"org{i}").ToArray(),
+            Respond = uri => uri.Query.Contains("page=1") && uri.AbsolutePath.EndsWith("/org130/repos")
+                ? FakeSources.GitHubList(FakeSources.GitHubRepo(130, "last", last.Path))
+                : FakeSources.GitHubList()
+        };
+
+        var context = await _run.RunAsync(sources);
+
+        var only = Assert.Single(context.Repos.Snapshot());
+        Assert.Equal("org130", only.Org);
+        Assert.Equal(2, sources.Requests.Count(r => r.Uri.AbsolutePath == "/user/orgs"));
+    }
+
+    [Fact]
+    public async Task ATokenThatSeesNoOrganizationsFailsTheStepAndLeavesTheSnapshotAlone()
+    {
+        var one = _run.Origin("one");
+        await _run.RunAsync(OrgsWithRepos(new() { ["alpha"] = one }));
+        var before = await File.ReadAllTextAsync(new FoundOrgAppRepoStore(_run.Config.StateRoot).Path);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _run.RunAsync(new FakeSources { Orgs = [] }));
+
+        Assert.Contains("see no organizations", error.Message);
+        Assert.Equal(before, await File.ReadAllTextAsync(new FoundOrgAppRepoStore(_run.Config.StateRoot).Path));
+    }
+
+    [Fact]
+    public async Task WhenTheOrganizationsOfTheTokenCannotBeListedEveryKnownGitHubOrgIsKeptNotDropped()
+    {
+        var origins = new Dictionary<string, FakeOrigin> { ["alpha"] = _run.Origin("a"), ["beta"] = _run.Origin("b") };
+        await _run.RunAsync(OrgsWithRepos(origins));
+        _run.With(s => s with
+        {
+            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" },
+                       new SourceSettings { Source = "ADO", Org = "vz", TokenSecret = "gh-token" }]
+        });
+        var ado = _run.Origin("svc");
+        var down = new FakeSources
+        {
+            OrgsRespond = _ => FakeRapid7.Json(HttpStatusCode.Unauthorized, "{\"message\":\"Bad credentials\"}"),
+            Respond = uri => AdoSource(ado).Respond(uri)
+        };
+
+        var context = await _run.RunAsync(down);
+
+        Assert.Contains(context.Status.Snapshot().Alerts, a => a.Type == "OrgDiscoveryFailed" && a.Name!.Contains("GitHub (organizations of the token)"));
+        var state = await ReadStateAsync();
+        Assert.Equal(["alpha", "beta"], state.Orgs.Where(o => o.Source == "GitHub").Select(o => o.Name).Order());
+        Assert.Contains(state.ToStoredRepos(), r => r.Repo.Key.StartsWith("ado-"));
+        Assert.All(context.Repos.Snapshot().Where(r => r.Source == "GitHub"), r => Assert.Equal(RepositoryStatus.Unreachable, r.RemoteStatus));
+    }
+
+    [Fact]
+    public async Task AnOrgTheTokenNoLongerListsIsKeptAndFlaggedNotDropped()
+    {
+        var a = _run.Origin("a");
+        var b = _run.Origin("b");
+        await _run.RunAsync(OrgsWithRepos(new() { ["alpha"] = a, ["beta"] = b }));
+
+        var context = await _run.RunAsync(OrgsWithRepos(new() { ["alpha"] = a }));
+
+        var note = Assert.Single(context.Status.Snapshot().Alerts, x => x.Type == "OrgNotListed");
+        Assert.Contains("GitHub/beta", note.Name);
+        Assert.Equal(["alpha", "beta"], (await ReadStateAsync()).Orgs.Select(o => o.Name).Order());
+        Assert.All(context.Repos.Snapshot().Where(r => r.Org == "beta"), r => Assert.False(r.ExistedRemotely));
+    }
+
+    [Fact]
+    public async Task AGitHubSourceTurnedOffKeepsEveryGitHubOrgItKnew()
+    {
+        var origins = new Dictionary<string, FakeOrigin> { ["alpha"] = _run.Origin("a"), ["beta"] = _run.Origin("b") };
+        await _run.RunAsync(OrgsWithRepos(origins));
+        _run.With(s => s with
+        {
+            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" },
+                       new SourceSettings { Source = "ADO", Org = "vz", TokenSecret = "gh-token" }]
+        });
+        var ado = _run.Origin("svc");
+
+        var context = await _run.RunAsync(
+            new FakeSources { Respond = uri => AdoSource(ado).Respond(uri) },
+            r => Off(r, "GitHub"));
+
+        Assert.Equal(["alpha", "beta"], (await ReadStateAsync()).Orgs.Where(o => o.Source == "GitHub").Select(o => o.Name).Order());
+        Assert.Contains(context.Status.Snapshot().Alerts, a => a.Type == "SourceLeftOut" && a.Name!.StartsWith("GitHub:"));
+    }
+
     // A stand-in for the Azure CLI: lists the given tenants, and answers a token request with "tok-<tenant>".
     private static void WriteAz(string path, params string[] tenants) =>
         File.WriteAllLines(path,
@@ -620,7 +748,7 @@ public class RepoCloneTests : IDisposable
         WriteAz(az, "tenant-a");
         _run.With(s => s with
         {
-            Sources = [new SourceSettings { Source = "ADO", Org = "vz" }, new SourceSettings { Source = "GitHub", Org = "acme", TokenSecret = "gh-token" }],
+            Sources = [new SourceSettings { Source = "ADO", Org = "vz" }, new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" }],
             Tools = new() { ["RepoClone"] = new ToolSettings { MaxParallel = 2, TimeoutMinutes = 2, AzPath = az } }
         });
         var origin = _run.Origin("one");

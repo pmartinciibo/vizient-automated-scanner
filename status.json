@@ -1,15 +1,15 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-11T03-00-22Z",
+  "runId": "2026-10-11T13-53-44Z",
   "revision": 1,
   "attempt": 1,
   "state": "CompletedWithFlags",
   "paused": false,
-  "pid": 30496,
+  "pid": 28912,
   "mode": "Normal",
-  "startedAt": "2026-10-11T03:00:22.6385073+00:00",
-  "updatedAt": "2026-10-11T03:00:22.7744812+00:00",
-  "endedAt": "2026-10-11T03:00:22.773678+00:00",
+  "startedAt": "2026-10-11T13:53:44.6544749+00:00",
+  "updatedAt": "2026-10-11T13:53:45.379682+00:00",
+  "endedAt": "2026-10-11T13:53:45.3781431+00:00",
   "phase": "Finalize",
   "overall": {
     "percent": 100,
@@ -48,62 +48,62 @@
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": "InvalidOperationException: No organization could be listed (ADO/vizientinc, GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
+      "message": "InvalidOperationException: No organization could be listed (GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
     },
     {
       "name": "TruffleHog",
-      "status": "Completed",
+      "status": "Disabled",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     },
     {
       "name": "Semgrep",
-      "status": "Completed",
+      "status": "Disabled",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     },
     {
       "name": "Snyk",
-      "status": "Completed",
+      "status": "Disabled",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     },
     {
       "name": "SonarStandard",
-      "status": "Completed",
+      "status": "Disabled",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     },
     {
       "name": "SonarDotNet",
-      "status": "Completed",
+      "status": "Disabled",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     }
   ],
   "effective": {},
@@ -116,67 +116,27 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T03:00:22.6892813+00:00"
+      "at": "2026-10-11T13:53:44.724786+00:00"
     },
     {
-      "type": "MissingSecret",
-      "tool": null,
+      "type": "SourceLeftOut",
+      "tool": "RepoClone",
       "repo": null,
-      "name": "buildtools-account-password",
+      "name": "ADO/vizientinc: turned off by the request",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T03:00:22.6892813+00:00"
-    },
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "github-token",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T03:00:22.6892813+00:00"
-    },
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "snyk-token",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T03:00:22.6892813+00:00"
-    },
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "sonar-token",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T03:00:22.6892813+00:00"
+      "at": "2026-10-11T13:53:44.8061791+00:00"
     },
     {
       "type": "OrgDiscoveryFailed",
       "tool": "RepoClone",
       "repo": null,
-      "name": "ADO/vizientinc: Secret \u0027ado-pat\u0027 (needed by RepoClone (ADO/vizientinc)) has not been set. Use: engine secrets set ado-pat",
+      "name": "GitHub/RnD-Vizient: HTTP 404 from https://api.github.com/orgs/RnD-Vizient/repos?per_page=100\u0026page=1\u0026type=all: {\u0022message\u0022:\u0022Not Found\u0022,\u0022documentation_url\u0022:\u0022https://docs.github.com/rest/repos/repos#list-organization-repositories\u0022,\u0022status\u0022:\u0022404\u0022}",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T03:00:22.7577603+00:00"
-    },
-    {
-      "type": "OrgDiscoveryFailed",
-      "tool": "RepoClone",
-      "repo": null,
-      "name": "GitHub/RnD-Vizient: Secret \u0027github-token\u0027 (needed by RepoClone (GitHub/RnD-Vizient)) has not been set. Use: engine secrets set github-token",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T03:00:22.7578359+00:00"
+      "at": "2026-10-11T13:53:45.3571122+00:00"
     }
   ],
   "lastCommandSeq": 0,

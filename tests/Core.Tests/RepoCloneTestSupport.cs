@@ -77,11 +77,25 @@ public sealed class FakeSources : HttpMessageHandler
 
     public Func<Uri, HttpResponseMessage?> Respond { get; set; } = _ => null;
 
+    /// <summary>The organizations the token belongs to, as GET /user/orgs answers. Tests that name none get one, "acme".</summary>
+    public string[] Orgs { get; set; } = ["acme"];
+
+    /// <summary>Replaces the answer to GET /user/orgs, to make that call fail.</summary>
+    public Func<Uri, HttpResponseMessage?>? OrgsRespond { get; set; }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
             Requests.Add((request.RequestUri!, request.Headers.Authorization?.ToString()));
+        }
+
+        if (request.RequestUri!.Host == "api.github.com" && request.RequestUri.AbsolutePath == "/user/orgs")
+        {
+            var number = int.Parse(request.RequestUri.Query.Split('&').Single(p => p.StartsWith("page=")).Split('=')[1]);
+            var page = Orgs.Skip((number - 1) * 100).Take(100);
+            return Task.FromResult(OrgsRespond?.Invoke(request.RequestUri)
+                ?? FakeRapid7.Json(HttpStatusCode.OK, $"[{string.Join(",", page.Select(o => $"{{\"login\":\"{o}\"}}"))}]"));
         }
 
         return Task.FromResult(Respond(request.RequestUri!) ?? FakeRapid7.Json(HttpStatusCode.NotFound, "{\"message\":\"unknown\"}"));
@@ -111,7 +125,7 @@ public sealed class RepoCloneRun : IDisposable
 
         var baseSettings = new EngineSettings
         {
-            Sources = [new SourceSettings { Source = "GitHub", Org = "acme", TokenSecret = "gh-token" }],
+            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" }],
             Retry = new RetrySettings { MaxAttempts = 2, BackoffSeconds = 0 },
             Tools = new() { ["RepoClone"] = new ToolSettings { MaxParallel = 4, TimeoutMinutes = 2 } }
         };
