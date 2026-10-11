@@ -6,8 +6,18 @@
   "requestedBy": "dev",
   "mode": "Normal",
   "tools": {
-    "Snyk": {
+    "Rapid7": {
       "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "RepoClone": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "CheckMarx": {
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     }

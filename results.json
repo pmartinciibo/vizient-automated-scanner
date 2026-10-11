@@ -1,18 +1,18 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-10T22-32-10Z",
+  "runId": "2026-10-10T23-38-46Z",
   "requestFile": "C:\\envs\\Vizient\\AutomatedScanner\\request.json",
-  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\2026-10-10T22-32-10Z",
+  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\2026-10-10T23-38-46Z",
   "state": "Completed",
   "exitCode": 0,
-  "startedAt": "2026-10-10T22:32:10.7564653+00:00",
-  "endedAt": "2026-10-10T23:03:41.3557349+00:00",
+  "startedAt": "2026-10-10T23:38:46.7131559+00:00",
+  "endedAt": "2026-10-11T00:39:29.4960118+00:00",
   "error": null,
   "tools": [
     {
       "name": "Rapid7",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "CheckMarx",
@@ -21,8 +21,8 @@
     },
     {
       "name": "RepoClone",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "TruffleHog",
@@ -36,8 +36,8 @@
     },
     {
       "name": "Snyk",
-      "status": "Disabled",
-      "message": "disabled in request.json"
+      "status": "Completed",
+      "message": null
     },
     {
       "name": "SonarStandard",

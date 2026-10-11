@@ -1,15 +1,15 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-10T22-32-10Z",
+  "runId": "2026-10-10T23-38-46Z",
   "revision": 1,
   "attempt": 1,
   "state": "Completed",
   "paused": false,
-  "pid": 21744,
+  "pid": 16984,
   "mode": "Normal",
-  "startedAt": "2026-10-10T22:32:10.7564653+00:00",
-  "updatedAt": "2026-10-10T23:03:41.357244+00:00",
-  "endedAt": "2026-10-10T23:03:41.3557349+00:00",
+  "startedAt": "2026-10-10T23:38:46.7131559+00:00",
+  "updatedAt": "2026-10-11T00:39:29.4975336+00:00",
+  "endedAt": "2026-10-11T00:39:29.4960118+00:00",
   "phase": "Finalize",
   "overall": {
     "percent": 100,
@@ -19,20 +19,20 @@
   "steps": [
     {
       "name": "Rapid7",
-      "status": "Completed",
-      "done": 160,
-      "total": 160,
+      "status": "Disabled",
+      "done": 0,
+      "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     },
     {
       "name": "CheckMarx",
       "status": "Completed",
-      "done": 0,
-      "total": 0,
+      "done": 156,
+      "total": 156,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
@@ -41,14 +41,14 @@
     },
     {
       "name": "RepoClone",
-      "status": "Completed",
+      "status": "Disabled",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": null
+      "message": "disabled in request.json"
     },
     {
       "name": "TruffleHog",
@@ -74,14 +74,14 @@
     },
     {
       "name": "Snyk",
-      "status": "Disabled",
+      "status": "Completed",
       "done": 0,
       "total": 0,
       "failed": 0,
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": "disabled in request.json"
+      "message": null
     },
     {
       "name": "SonarStandard",
@@ -112,41 +112,21 @@
       "type": "MissingSecret",
       "tool": null,
       "repo": null,
-      "name": "ado-pat",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-10T22:32:10.8193086+00:00"
-    },
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
       "name": "buildtools-account-password",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:32:10.8193086+00:00"
+      "at": "2026-10-10T23:38:46.7656469+00:00"
     },
     {
       "type": "MissingSecret",
       "tool": null,
       "repo": null,
-      "name": "checkmarx-token",
+      "name": "snyk-token",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:32:10.8193086+00:00"
-    },
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "github-token",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-10T22:32:10.8193086+00:00"
+      "at": "2026-10-10T23:38:46.7656469+00:00"
     },
     {
       "type": "MissingSecret",
@@ -156,7 +136,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T22:32:10.8193086+00:00"
+      "at": "2026-10-10T23:38:46.7656469+00:00"
     }
   ],
   "lastCommandSeq": 0,

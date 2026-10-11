@@ -118,6 +118,11 @@ public static class EngineSettingsValidator
             ValidateRapid7(tool);
         }
 
+        if (name == ToolNames.CheckMarx)
+        {
+            ValidateCheckMarx(tool);
+        }
+
         if (tool.RunAs is { } runAs && (string.IsNullOrWhiteSpace(runAs.Account) || string.IsNullOrWhiteSpace(runAs.PasswordSecret)))
         {
             throw Bad($"tools.{name}.runAs needs both account and passwordSecret.");
@@ -165,6 +170,65 @@ public static class EngineSettingsValidator
             {
                 throw Bad($"tools.Rapid7.areas must be some of: {string.Join(", ", Rapid7Areas)}." +
                     (unknown.Count > 0 ? $" Not known: {string.Join(", ", unknown)}." : string.Empty));
+            }
+        }
+    }
+
+    private static readonly string[] CheckMarxAreas = ["applications", "projects", "results"];
+    private static readonly string[] CheckMarxScopes = ["latest-per-project", "all"];
+
+    private static void ValidateCheckMarx(ToolSettings tool)
+    {
+        if (tool.BaseUrl is not null
+            && !(Uri.TryCreate(tool.BaseUrl, UriKind.Absolute, out var url) && url.Scheme is "http" or "https"))
+        {
+            throw Bad("tools.CheckMarx.baseUrl must be a full http or https address.");
+        }
+
+        if (tool.TokenUrl is not null
+            && !(Uri.TryCreate(tool.TokenUrl.Replace("{tenant}", "tenant"), UriKind.Absolute, out var tokenUrl) && tokenUrl.Scheme is "http" or "https"))
+        {
+            throw Bad("tools.CheckMarx.tokenUrl must be a full http or https address.");
+        }
+
+        if (tool.Tenant is not null && string.IsNullOrWhiteSpace(tool.Tenant))
+        {
+            throw Bad("tools.CheckMarx.tenant is blank. Leave it out if the token address does not need it.");
+        }
+
+        if (tool.PageSize is < 1)
+        {
+            throw Bad("tools.CheckMarx.pageSize must be at least 1.");
+        }
+
+        if (tool.MaxPages is < 0)
+        {
+            throw Bad("tools.CheckMarx.maxPages cannot be negative. Use 0 or leave it out for all pages.");
+        }
+
+        if (tool.ResultsMaxScans is < 0)
+        {
+            throw Bad("tools.CheckMarx.resultsMaxScans cannot be negative. Use 0 or leave it out for no limit.");
+        }
+
+        if (tool.ResultsScope is not null && !CheckMarxScopes.Contains(tool.ResultsScope))
+        {
+            throw Bad($"tools.CheckMarx.resultsScope must be \"latest-per-project\" or \"all\", not \"{tool.ResultsScope}\".");
+        }
+
+        if (tool.Areas is { } areas)
+        {
+            var unknown = areas.Except(CheckMarxAreas).ToList();
+            if (areas.Count == 0 || unknown.Count > 0)
+            {
+                throw Bad($"tools.CheckMarx.areas must be some of: {string.Join(", ", CheckMarxAreas)}." +
+                    (unknown.Count > 0 ? $" Not known: {string.Join(", ", unknown)}." : string.Empty));
+            }
+
+            // Findings are filed under their application through their project, so both have to be exported too.
+            if (areas.Contains("results") && !(areas.Contains("applications") && areas.Contains("projects")))
+            {
+                throw Bad("tools.CheckMarx.areas: \"results\" needs \"applications\" and \"projects\" as well, so findings can be filed under their application.");
             }
         }
     }

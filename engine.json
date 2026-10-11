@@ -27,7 +27,10 @@
     "CheckMarx": {
       "enabled": true,
       "tokenSecret": "checkmarx-token",
-      "baseUrl": "https://example.invalid/api"
+      "baseUrl": "https://us.ast.checkmarx.net",
+      "tenant": "vizient-inc",
+      "clientId": "ast-app",
+      "pageSize": 100
     },
     "RepoClone": {
       "enabled": true,

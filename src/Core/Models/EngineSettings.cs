@@ -89,17 +89,39 @@ public sealed record ToolSettings
     /// </summary>
     public string? AuthMode { get; init; }
 
-    /// <summary>Rapid7 only. Records per request. Defaults to 100.</summary>
+    /// <summary>Rapid7 and CheckMarx. Records per request. Defaults to 100.</summary>
     public int? PageSize { get; init; }
 
-    /// <summary>Rapid7 only. Stop after this many pages of each area, for a trial run. 0 or left out means all pages.</summary>
+    /// <summary>Rapid7 and CheckMarx. Stop after this many pages of each area, for a trial run. 0 or left out means all pages.</summary>
     public int? MaxPages { get; init; }
 
     /// <summary>
-    /// Rapid7 only. Which of applications, vulnerabilities, scans and reports to export. Left out means applications
-    /// and vulnerabilities. Scans and reports, if listed, are added to each application alongside its vulnerabilities.
+    /// Rapid7: which of applications, vulnerabilities, scans and reports to export. Left out means applications and
+    /// vulnerabilities. Scans and reports, if listed, are added to each application alongside its vulnerabilities.
+    /// CheckMarx: which of applications, projects and results. Left out means all three. Results need the other two.
     /// </summary>
     public List<string>? Areas { get; init; }
+
+    /// <summary>CheckMarx only. The tenant (realm) in the token address, for example in https://.../realms/{tenant}/.... Required unless tokenUrl has no {tenant} in it.</summary>
+    public string? Tenant { get; init; }
+
+    /// <summary>CheckMarx only. The address that swaps the refresh token for an access token. May contain {tenant}. Left out means the US IAM address.</summary>
+    public string? TokenUrl { get; init; }
+
+    /// <summary>CheckMarx only. The OAuth client id. Defaults to "ast-app".</summary>
+    public string? ClientId { get; init; }
+
+    /// <summary>CheckMarx only. Which scans to read findings from: "latest-per-project" (the default) or "all", which is one call for every scan there has ever been.</summary>
+    public string? ResultsScope { get; init; }
+
+    /// <summary>CheckMarx only. Read findings only from scans that ran this engine. Defaults to "sast". An empty string turns the filter off.</summary>
+    public string? ResultsEngine { get; init; }
+
+    /// <summary>CheckMarx only. Read findings only from scans with this status. Defaults to "Completed". An empty string turns the filter off.</summary>
+    public string? ResultsScanStatus { get; init; }
+
+    /// <summary>CheckMarx only. Read findings from at most this many scans, for a cheap trial run. 0 or left out means no limit.</summary>
+    public int? ResultsMaxScans { get; init; }
 
     /// <summary>SonarQube.</summary>
     public string? ServerUrl { get; init; }

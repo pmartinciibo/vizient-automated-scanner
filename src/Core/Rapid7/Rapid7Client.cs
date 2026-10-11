@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using Vizient.AutomatedScanner.Core.Imports;
 using Vizient.AutomatedScanner.Core.Processes;
 
 namespace Vizient.AutomatedScanner.Core.Rapid7;
@@ -49,16 +50,13 @@ public sealed class Rapid7Page : IDisposable
 /// </summary>
 public sealed class Rapid7Client
 {
-    public const int MaxAttempts = 8;
+    public const int MaxAttempts = ApiRequester.MaxAttempts;
     public const string UserAgent = "Rapid7-JSON-export/1.0";
 
-    private static readonly int[] RetryableStatuses = [429, 500, 502, 503, 504];
-    private static readonly TimeSpan MaxBackoff = TimeSpan.FromSeconds(60);
-
-    private readonly HttpClient _http;
     private readonly Rapid7Options _options;
     private readonly string _token;
     private readonly SecretRedactor _redactor;
+    private readonly HttpClient _http;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
     public Rapid7Client(
@@ -99,7 +97,7 @@ public sealed class Rapid7Client
                 : $"page-token={Uri.EscapeDataString(pageToken)}&size={_options.PageSize}";
             var url = $"{endpoint}?{query}";
 
-            var document = await RequestJsonAsync(url, cancellationToken);
+            var document = await Requester().GetJsonAsync(url, () => CreateRequest(url), cancellationToken);
             var records = ReadRecords(document, url);
             var (totalPages, nextToken) = ReadMetadata(document);
 
@@ -155,64 +153,18 @@ public sealed class Rapid7Client
         return (totalPages, token);
     }
 
-    // ---- one request, with retries ----
+    // Built each time, so a change to RequestTimeout or OnRetry made after construction is picked up.
+    private ApiRequester Requester() => new(
+        _http,
+        (message, status) => new Rapid7ApiException(message, status),
+        _redactor.Redact,
+        _delay,
+        RequestTimeout,
+        OnRetry);
 
-    private async Task<JsonDocument> RequestJsonAsync(string url, CancellationToken cancellationToken)
+    private HttpRequestMessage CreateRequest(string url)
     {
-        for (var attempt = 0; attempt < MaxAttempts; attempt++)
-        {
-            var last = attempt == MaxAttempts - 1;
-            HttpStatusCode status;
-            byte[] body;
-            TimeSpan? retryAfter;
-
-            try
-            {
-                (status, body, retryAfter) = await SendAsync(url, cancellationToken);
-            }
-            catch (Exception ex) when (IsConnectionProblem(ex, cancellationToken))
-            {
-                // A dropped connection, a DNS blip or a request that timed out: the call itself may be fine.
-                if (last)
-                {
-                    throw new Rapid7ApiException(Mask($"Giving up on {url} after {MaxAttempts} attempts: {Describe(ex)}"));
-                }
-
-                var wait = Backoff(attempt);
-                OnRetry?.Invoke(Mask($"connection issue ({Describe(ex)}); retrying in {wait.TotalSeconds:0}s"));
-                await _delay(wait, cancellationToken);
-                continue;
-            }
-
-            if ((int)status is >= 200 and < 300)
-            {
-                try
-                {
-                    return JsonDocument.Parse(body);
-                }
-                catch (JsonException)
-                {
-                    throw new Rapid7ApiException(Mask($"Non-JSON response from {url}: {Snippet(body)}"), (int)status);
-                }
-            }
-
-            if (RetryableStatuses.Contains((int)status) && !last)
-            {
-                var wait = retryAfter ?? Backoff(attempt);
-                OnRetry?.Invoke($"HTTP {(int)status}; retrying in {wait.TotalSeconds:0}s");
-                await _delay(wait, cancellationToken);
-                continue;
-            }
-
-            throw new Rapid7ApiException(Mask($"HTTP {(int)status} from {url}: {Snippet(body)}"), (int)status);
-        }
-
-        throw new Rapid7ApiException($"Giving up on {url} after {MaxAttempts} attempts.");
-    }
-
-    private async Task<(HttpStatusCode Status, byte[] Body, TimeSpan? RetryAfter)> SendAsync(string url, CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.UserAgent.ParseAdd(UserAgent);
         if (_options.AuthMode == Rapid7Options.ApiKeyMode)
@@ -226,44 +178,6 @@ public sealed class Rapid7Client
                 "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_token}:")));
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(RequestTimeout);
-
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
-        var body = await response.Content.ReadAsByteArrayAsync(timeout.Token);
-        return (response.StatusCode, body, ReadRetryAfter(response));
+        return request;
     }
-
-    // The header can be a whole number of seconds or, as the script allowed, a decimal one.
-    private static TimeSpan? ReadRetryAfter(HttpResponseMessage response)
-    {
-        if (!response.Headers.NonValidated.TryGetValues("Retry-After", out var values))
-        {
-            return null;
-        }
-
-        var text = values.FirstOrDefault();
-        return double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds) && seconds >= 0
-            ? TimeSpan.FromSeconds(seconds)
-            : null;
-    }
-
-    // An HttpRequestException, or a timeout (cancelled by our own timer rather than by the caller).
-    private static bool IsConnectionProblem(Exception ex, CancellationToken caller) =>
-        ex is HttpRequestException || (ex is OperationCanceledException && !caller.IsCancellationRequested);
-
-    // 1, 2, 4, 8 ... seconds, never more than a minute.
-    private static TimeSpan Backoff(int attempt) =>
-        TimeSpan.FromSeconds(Math.Min(Math.Pow(2, attempt), MaxBackoff.TotalSeconds));
-
-    private static string Describe(Exception ex) =>
-        ex is OperationCanceledException ? "the request timed out" : ex.Message;
-
-    private static string Snippet(byte[] body)
-    {
-        var text = Encoding.UTF8.GetString(body, 0, Math.Min(body.Length, 400)).Replace('\n', ' ').Replace('\r', ' ');
-        return text;
-    }
-
-    private string Mask(string text) => _redactor.Redact(text);
 }

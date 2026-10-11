@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using Vizient.AutomatedScanner.Core.Imports;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Tools;
 
@@ -52,7 +53,7 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
         var applications = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         var scans = new Dictionary<string, List<JsonElement>>(StringComparer.Ordinal);
         var reports = new Dictionary<string, List<JsonElement>>(StringComparer.Ordinal);
-        var spools = new Dictionary<string, Rapid7Spool>(StringComparer.Ordinal);
+        var spools = new Dictionary<string, RecordSpool>(StringComparer.Ordinal);
         var totalVulnerabilities = 0L;
 
         try
@@ -91,14 +92,14 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
                     using (page)
                     {
                         await HoldWhilePausedOrStopAsync(cancellationToken);
-                        var touched = new HashSet<Rapid7Spool>();
+                        var touched = new HashSet<RecordSpool>();
 
                         foreach (var vulnerability in page.Records)
                         {
                             var key = KeyFor(vulnerability, topLevel: false);
                             if (!spools.TryGetValue(key, out var spool))
                             {
-                                spools[key] = spool = new Rapid7Spool(Path.Combine(spoolDir, $"{spools.Count:D6}.spool"));
+                                spools[key] = spool = new RecordSpool(Path.Combine(spoolDir, $"{spools.Count:D6}.spool"));
                             }
 
                             spool.Append(vulnerability);
@@ -189,7 +190,7 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
         Dictionary<string, JsonElement> applications,
         Dictionary<string, List<JsonElement>> scans,
         Dictionary<string, List<JsonElement>> reports,
-        Dictionary<string, Rapid7Spool> spools) =>
+        Dictionary<string, RecordSpool> spools) =>
         applications.Keys
             .Concat(scans.Keys)
             .Concat(reports.Keys)
@@ -211,7 +212,7 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
         Dictionary<string, JsonElement> applications,
         Dictionary<string, List<JsonElement>> scans,
         Dictionary<string, List<JsonElement>> reports,
-        Dictionary<string, Rapid7Spool> spools,
+        Dictionary<string, RecordSpool> spools,
         CancellationToken cancellationToken)
     {
         context.Status.UpdateStep(Tool, step => step with { Total = keys.Count, Message = "writing the file" });
@@ -274,7 +275,7 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
         Dictionary<string, JsonElement> applications,
         Dictionary<string, List<JsonElement>> scans,
         Dictionary<string, List<JsonElement>> reports,
-        Dictionary<string, Rapid7Spool> spools,
+        Dictionary<string, RecordSpool> spools,
         CancellationToken cancellationToken)
     {
         writer.WriteStartObject();
