@@ -164,6 +164,7 @@ internal sealed partial class RepoSynchronizer(
     // A repo that could not be brought up to date is flagged and kept out of the scans. Whatever is on disk stays.
     private RepoWorkResult Fail(RepoOutcome outcome, string category, string message, int attempts)
     {
+        message = $"{Describe(outcome)}: {message}";
         context.Repos.Record(outcome with
         {
             ExistedLocally = IsMirror(outcome.LocalPath),
@@ -172,6 +173,10 @@ internal sealed partial class RepoSynchronizer(
         });
         return RepoWorkResult.Failed(category, message, attempts);
     }
+
+    /// <summary>"GitHub acme/repo" or "ADO org/project/repo": the source first, so a message never leaves out where the repo is.</summary>
+    internal static string Describe(RepoOutcome repo) =>
+        $"{repo.Source} {string.Join('/', new[] { repo.Org, repo.Project, repo.Name }.Where(part => !string.IsNullOrWhiteSpace(part)))}";
 
     private static string Tail(string text)
     {

@@ -432,6 +432,7 @@ public sealed class ScanPhase
         private int _skipped;
         private int _running;
         private int _inUse;
+        private readonly List<string> _runningLabels = new();
         private int _notStarted;
         private bool _disabled;
         private string? _disabledReason;
@@ -548,9 +549,11 @@ public sealed class ScanPhase
                     return;
                 }
 
+                var label = RepoProgress.Label(repo);
                 lock (_gate)
                 {
                     _running++;
+                    _runningLabels.Add(label);
                 }
 
                 Publish();
@@ -571,6 +574,7 @@ public sealed class ScanPhase
                     lock (_gate)
                     {
                         _running--;
+                        _runningLabels.Remove(label);
                     }
 
                     Publish();
@@ -613,6 +617,7 @@ public sealed class ScanPhase
             lock (_gate)
             {
                 _running--;
+                _runningLabels.Remove(RepoProgress.Label(repo));
                 switch (result.Kind)
                 {
                     case RepoWorkKind.Done:
@@ -685,6 +690,12 @@ public sealed class ScanPhase
             lock (_gate)
             {
                 (total, done, failed, skipped, running) = (_total, _done, _failed, _skipped, _running);
+
+                // Unless a message was given on purpose, say how far along it is and what is being scanned now.
+                if (message is null && _running > 0)
+                {
+                    message = RepoProgress.Text(_done, _failed, _skipped, _total, _runningLabels);
+                }
             }
 
             _context.Status.UpdateStep(Name, step => step with

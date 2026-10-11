@@ -248,7 +248,7 @@ public class SecretsRuntimeTests : IDisposable
     {
         var settings = new EngineSettings
         {
-            Sources = [new SourceSettings { Source = "ADO", Org = "vizientinc", TokenSecret = "ado-pat" }],
+            Sources = [new SourceSettings { Name = "ADO", Source = "ADO", Org = "vizientinc", TokenSecret = "ado-pat" }],
             Tools = new()
             {
                 ["Rapid7"] = new ToolSettings { TokenSecret = "rapid7-token" },
@@ -288,12 +288,23 @@ public class SecretsRuntimeTests : IDisposable
     {
         var settings = new EngineSettings
         {
-            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "github-token" }],
+            Sources = [new SourceSettings { Name = "GitHub", Source = "GitHub", TokenSecret = "github-token" }],
             Tools = new() { ["Snyk"] = new ToolSettings { Env = new() { ["SNYK_TOKEN"] = "snyk-token" } } }
         };
 
         Assert.Empty(SecretsChecker.RequiredSecrets(settings, _ => false));
         Assert.Equal(["github-token"], SecretsChecker.RequiredSecrets(settings, tool => tool == "RepoClone").Keys);
+
+        // A source the request turns off needs no secret, and a GitHub source is labelled without a trailing space.
+        var both = new EngineSettings
+        {
+            Sources = [new SourceSettings { Name = "GitHub", Source = "GitHub", TokenSecret = "github-token" },
+                       new SourceSettings { Name = "ADO", Source = "ADO", Org = "vizientinc", TokenSecret = "ado-pat" }]
+        };
+        var onlyGitHub = SecretsChecker.RequiredSecrets(both, tool => tool == "RepoClone", source => source.Source == "GitHub");
+        Assert.Equal(["github-token"], onlyGitHub.Keys);
+        Assert.Equal("GitHub source", onlyGitHub["github-token"]);
+        Assert.Equal("ADO source vizientinc", SecretsChecker.RequiredSecrets(both, tool => tool == "RepoClone")["ado-pat"]);
     }
 
     [Theory]

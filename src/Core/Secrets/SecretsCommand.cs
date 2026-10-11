@@ -104,6 +104,9 @@ public static class SecretsCommand
             return 2;
         }
 
+        // A token pasted with a space or a line break around it is rejected by every API as bad credentials.
+        value = value.Trim();
+
         var store = await SecretStore.LoadAsync(file, ct);
         var replacing = store.Contains(name);
         try

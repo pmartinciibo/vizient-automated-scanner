@@ -74,7 +74,7 @@ public sealed record RunContext(
             runIdGenerated = true;
         }
 
-        ValidateRequest(request);
+        ValidateRequest(request, config.Current.Sources);
 
         var paths = new RunPaths(Path.Combine(config.RunsRoot, request.RunId));
         var continuing = request.Mode is ScanMode.Resume or ScanMode.RetryFailed;
@@ -133,7 +133,7 @@ public sealed record RunContext(
         return candidate;
     }
 
-    private static void ValidateRequest(RunRequestDocument request)
+    private static void ValidateRequest(RunRequestDocument request, IReadOnlyList<SourceSettings> configured)
     {
         if (!SafeName.IsValid(request.RunId))
         {
@@ -159,11 +159,24 @@ public sealed record RunContext(
                 throw new InvalidDataException($"request.json: \"sources\" belongs under the RepoClone tool, not {tool}.");
             }
 
-            var unknownSources = overrides.Sources.Keys.Except([SourceSettings.Ado, SourceSettings.GitHub]).ToList();
+            foreach (var (sourceName, sourceOverride) in overrides.Sources)
+            {
+                if (sourceOverride.Unknown is { Count: > 0 } unknownMembers)
+                {
+                    var names = string.Join(", ", unknownMembers.Keys.Select(k => $"\"{k}\""));
+                    throw new InvalidDataException(
+                        $"request.json: tools.RepoClone.sources.{sourceName} has {names}, which RepoClone does not know. "
+                        + $"Use \"state\" with Disabled, ListOnly or Clone (\"enabled\" was replaced by it).");
+                }
+            }
+
+            var known = configured.Select(s => s.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Cast<string>().ToList();
+            var unknownSources = overrides.Sources.Keys.Except(known, StringComparer.Ordinal).ToList();
             if (unknownSources.Count > 0)
             {
                 throw new InvalidDataException(
-                    $"request.json names unknown sources: {string.Join(", ", unknownSources)}. Use \"{SourceSettings.Ado}\" or \"{SourceSettings.GitHub}\".");
+                    $"request.json names unknown sources: {string.Join(", ", unknownSources)}. "
+                    + $"Use the name of an entry in engine.json sources: {(known.Count > 0 ? string.Join(", ", known) : "there are none")}.");
             }
         }
     }

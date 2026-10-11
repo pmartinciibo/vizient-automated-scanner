@@ -31,6 +31,7 @@ public static class EngineSettingsValidator
     private static void ValidateSources(List<SourceSettings> sources)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < sources.Count; i++)
         {
             var source = sources[i];
@@ -39,6 +40,36 @@ public static class EngineSettingsValidator
             if (source.Source is not (SourceSettings.Ado or SourceSettings.GitHub))
             {
                 throw Bad($"{where}.source must be \"{SourceSettings.Ado}\" or \"{SourceSettings.GitHub}\", not \"{source.Source}\".");
+            }
+
+            if (string.IsNullOrWhiteSpace(source.Name))
+            {
+                throw Bad($"{where}.name is required. It is what request.json calls the entry, to turn it off or only list it.");
+            }
+
+            if (!Core.IO.SafeName.IsValid(source.Name))
+            {
+                throw Bad($"{where}.name \"{source.Name}\" must be a plain name (letters, digits, - _ .).");
+            }
+
+            if (!seenNames.Add(source.Name))
+            {
+                throw Bad($"{where}.name \"{source.Name}\" is used by another entry.");
+            }
+
+            if (source.IncludeOwnRepos && source.Source != SourceSettings.GitHub)
+            {
+                throw Bad($"{where}.includeOwnRepos applies to GitHub only.");
+            }
+
+            // An org name goes into an address, so it must be a plain name.
+            foreach (var named in source.Orgs ?? [])
+            {
+                var plain = Core.IO.SafeName.IsValid(named);
+                if (source.Source == SourceSettings.GitHub ? !plain || named.Contains('.') || named.Contains('_') : !plain)
+                {
+                    throw Bad($"{where}.orgs has \"{named}\", which is not {(source.Source == SourceSettings.GitHub ? "a GitHub organization name (letters, digits and hyphens)" : "an Azure DevOps organization name")}.");
+                }
             }
 
             if (source.Source == SourceSettings.GitHub)
@@ -61,14 +92,18 @@ public static class EngineSettingsValidator
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(source.Org))
+            var adoOrgs = source.NamedOrgs();
+            if (adoOrgs.Count == 0)
             {
-                throw Bad($"{where}.org is required for Azure DevOps.");
+                throw Bad($"{where} needs \"org\", or \"orgs\" for several, for Azure DevOps.");
             }
 
-            if (!seen.Add($"{source.Source}|{source.Org.Trim()}"))
+            foreach (var adoOrg in adoOrgs)
             {
-                throw Bad($"{where} lists {source.Source} org \"{source.Org}\" a second time.");
+                if (!seen.Add($"{source.Source}|{adoOrg}"))
+                {
+                    throw Bad($"{where} lists {source.Source} org \"{adoOrg}\" a second time.");
+                }
             }
         }
     }

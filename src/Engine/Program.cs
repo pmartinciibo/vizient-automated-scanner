@@ -130,10 +130,11 @@ try
 {
     var results = await orchestrator.RunAsync(context, cancellation.Token);
 
-    foreach (var disabled in results.Where(r => r.Disabled))
-    {
-        Console.WriteLine($"Disabled: {disabled.Tool}");
-    }
+    // Two lines, in the tools' usual order: what ran, and what did not.
+    string Names(bool disabled) => results.Where(r => r.Disabled == disabled).Select(r => r.Tool)
+        .OrderBy(tool => ToolNames.All.ToList().IndexOf(tool)).ToList() is { Count: > 0 } names ? string.Join(", ", names) : "none";
+    Console.WriteLine($"Enabled: {Names(disabled: false)}");
+    Console.WriteLine($"Disabled: {Names(disabled: true)}");
 
     var failures = results.Where(r => !r.Succeeded).ToList();
     foreach (var failure in failures)

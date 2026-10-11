@@ -98,6 +98,12 @@ public sealed record OrgOutcome
     /// <summary>The org was in the last snapshot. False means new since the previous scan.</summary>
     public bool ExistedPriorToScan { get; init; }
 
+    /// <summary>
+    /// How this run got on with the org: "12 repos found", or why it could not be listed (the error, or that the request
+    /// turned its source off). An org engine.json names is always in the results, with this, even if it has no repos.
+    /// </summary>
+    public string? StatusMessage { get; init; }
+
     public List<ApplicationOutcome> Applications { get; init; } = new();
 }
 

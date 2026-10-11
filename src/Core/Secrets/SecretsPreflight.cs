@@ -24,7 +24,7 @@ public static class SecretsPreflight
         }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var result = SecretsChecker.Check(context.Config.Current, store, context.IsEnabled, today, fileError);
+        var result = SecretsChecker.Check(context.Config.Current, store, context.IsEnabled, today, fileError, s => context.Request.IsSourceEnabled(s.Name));
         var now = DateTimeOffset.UtcNow;
 
         if (fileError is not null)

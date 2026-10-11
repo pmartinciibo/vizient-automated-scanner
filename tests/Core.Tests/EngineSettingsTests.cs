@@ -66,8 +66,8 @@ public class EngineSettingsTests : IDisposable
     {
         var config = await LoadAsync("""
             "sources": [
-              { "source": "ADO", "org": "vizientinc", "tokenSecret": "ado-pat" },
-              { "source": "GitHub", "tokenSecret": "github-token" }
+              { "source": "ADO", "name": "n1", "org": "vizientinc", "tokenSecret": "ado-pat" },
+              { "source": "GitHub", "name": "n2", "tokenSecret": "github-token" }
             ],
             "scanArchived": true,
             "skip": { "enabled": false, "canaryPercent": 10, "fullRescanEveryDays": 14 },
@@ -138,8 +138,8 @@ public class EngineSettingsTests : IDisposable
     [InlineData("""{ "skip": { "canaryPercent": -1 } }""", "skip.canaryPercent")]
     [InlineData("""{ "skip": { "fullRescanEveryDays": 0 } }""", "skip.fullRescanEveryDays")]
     [InlineData("""{ "sources": [ { "source": "GitLab", "org": "x" } ] }""", "sources[0].source")]
-    [InlineData("""{ "sources": [ { "source": "ADO", "org": "" } ] }""", "sources[0].org")]
-    [InlineData("""{ "sources": [ { "source": "ADO", "org": "a" }, { "source": "ADO", "org": "A" } ] }""", "sources[1]")]
+    [InlineData("""{ "sources": [ { "source": "ADO", "name": "n3", "org": "" } ] }""", "sources[0] needs")]
+    [InlineData("""{ "sources": [ { "source": "ADO", "name": "n4", "org": "a" }, { "source": "ADO", "name": "n5", "org": "A" } ] }""", "sources[1]")]
     public async Task ABadSettingIsRejectedAtLoadWithAMessageNamingIt(string settingsJson, string expectedInMessage)
     {
         // Each case is one JSON object, so splice its members into the top level of the file.
@@ -155,7 +155,7 @@ public class EngineSettingsTests : IDisposable
     public async Task AnAdoOrgAndAGitHubSourceAreFine()
     {
         var config = await LoadAsync("""
-            "sources": [ { "source": "ADO", "org": "acme" }, { "source": "GitHub", "tokenSecret": "t" } ]
+            "sources": [ { "source": "ADO", "name": "n6", "org": "acme" }, { "source": "GitHub", "name": "n7", "tokenSecret": "t" } ]
             """);
 
         Assert.Equal(2, config.Current.Sources.Count);

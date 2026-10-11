@@ -12,6 +12,7 @@ namespace Vizient.AutomatedScanner.Core.Status;
 public sealed class RepoReport
 {
     private readonly ConcurrentDictionary<string, RepoOutcome> _repos = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string Source, string Org, string Message)> _orgs = new(StringComparer.OrdinalIgnoreCase);
     private volatile FoundOrgAppRepoIndex _prior = FoundOrgAppRepoIndex.Empty;
 
     /// <summary>What the last scan found, so results.json can show what is new. Empty until RepoClone loads it.</summary>
@@ -19,6 +20,13 @@ public sealed class RepoReport
 
     public void SetPrior(FoundOrgAppRepoDocument lastSnapshot) =>
         _prior = new FoundOrgAppRepoIndex(lastSnapshot);
+
+    /// <summary>
+    /// Says how the listing of an org went. A later call for the same org replaces the earlier. An org given a message
+    /// is in <see cref="Orgs"/> whether or not it has any repos.
+    /// </summary>
+    public void SetOrgStatus(string source, string org, string message) =>
+        _orgs[$"{source.Trim()}|{org.Trim()}"] = (source.Trim(), org.Trim(), message);
 
     public void Record(RepoOutcome repo)
     {
@@ -41,12 +49,28 @@ public sealed class RepoReport
     public IReadOnlyList<OrgOutcome> Orgs()
     {
         var prior = _prior;
+        var grouped = RepoGrouping.Group(Snapshot());
 
-        return RepoGrouping.Group(Snapshot())
+        // Orgs that were named or asked about but have no repos to show: still listed, with why.
+        var present = grouped.Select(g => $"{g.Source}|{g.Org}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var empty = _orgs
+            .Where(o => !present.Contains(o.Key))
+            .Select(o => new OrgOutcome
+            {
+                Source = o.Value.Source,
+                Name = o.Value.Org,
+                ExistedLocally = false,
+                ExistedRemotely = false,
+                ExistedPriorToScan = prior.HasOrg(o.Value.Source, o.Value.Org),
+                StatusMessage = o.Value.Message
+            });
+
+        return grouped
             .Select(org => new OrgOutcome
             {
                 Source = org.Source,
                 Name = org.Org,
+                StatusMessage = _orgs.TryGetValue($"{org.Source}|{org.Org}", out var said) ? said.Message : null,
                 ExistedLocally = org.Repos.Any(r => r.ExistedLocally),
                 ExistedRemotely = org.Repos.Any(r => r.ExistedRemotely),
                 ExistedPriorToScan = prior.HasOrg(org.Source, org.Org),
@@ -63,6 +87,10 @@ public sealed class RepoReport
                     })
                     .ToList()
             })
+            .Concat(empty)
+            .OrderBy(o => o.Source, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(o => o.Name == RepoOutcome.Unassigned)
+            .ThenBy(o => o.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 }

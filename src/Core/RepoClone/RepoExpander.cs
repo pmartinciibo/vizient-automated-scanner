@@ -18,7 +18,7 @@ public sealed class RepoExpander(RunContext context)
     {
         if (!RepoSynchronizer.IsMirror(repo.LocalPath))
         {
-            throw new InvalidOperationException($"{repo.Key} has no mirror to expand ({repo.LocalPath ?? "no local path"}).");
+            throw new InvalidOperationException($"{RepoSynchronizer.Describe(repo)} has no mirror to expand ({repo.LocalPath ?? "no local path"}).");
         }
 
         var target = Path.Combine(context.Config.TmpRoot, FolderName, context.Paths.RunId, repo.Key);
@@ -41,7 +41,7 @@ public sealed class RepoExpander(RunContext context)
         {
             // Whatever a failed clone left behind goes too, so a retry starts clean.
             TryDelete(target);
-            throw new InvalidOperationException($"Could not expand {repo.Key}: {clone.Message} {clone.StdErr.Trim()}".Trim());
+            throw new InvalidOperationException($"Could not expand {RepoSynchronizer.Describe(repo)}: {clone.Message} {clone.StdErr.Trim()}".Trim());
         }
 
         var head = await git.LocalAsync(target, ["rev-parse", "--verify", "--quiet", "HEAD"], cancellationToken);

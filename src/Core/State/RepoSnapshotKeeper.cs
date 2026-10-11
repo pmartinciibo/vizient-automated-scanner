@@ -38,7 +38,7 @@ public static class RepoSnapshotKeeper
             {
                 Type = "SnapshotNotUpdated",
                 Tool = ToolNames.RepoClone,
-                Name = FoundOrgAppRepoStore.FileName,
+                Name = $"{string.Join(" and ", context.Config.Current.Sources.Select(s => s.Source).Distinct())}: no repos found, so {FoundOrgAppRepoStore.FileName} was left as the last scan wrote it",
                 At = clock.GetUtcNow()
             });
             return;

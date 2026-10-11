@@ -111,6 +111,14 @@ public class SecretsCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task SpacesAroundAPastedValueAreNotStored()
+    {
+        await RunAsync(new FakeConsole { Piped = "  ghp_VALUE-123 	" }, null, "set", "github-token", "--stdin");
+
+        Assert.Equal("ghp_VALUE-123", (await StoreAsync()).GetRequired("github-token", Today, "test"));
+    }
+
+    [Fact]
     public async Task SettingOneSecretLeavesTheOthersAlone()
     {
         await RunAsync(new FakeConsole { Piped = "first-VALUE" }, null, "set", "a", "--stdin");

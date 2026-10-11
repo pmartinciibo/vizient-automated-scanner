@@ -342,7 +342,7 @@ public class ScanPhaseTests : IDisposable
         _world.WithTool(ToolNames.TruffleHog, t => t with { MaxParallel = 1 });
         await WorldWithReposAsync(6);
         _world.Context.Control.SetMaxParallel("TruffleHog", 3);
-        var tool = Trufflehog(work: TimeSpan.FromMilliseconds(100));
+        var tool = Trufflehog(work: TimeSpan.FromMilliseconds(600));
 
         await _world.ScanAsync([tool]);
 
@@ -395,6 +395,22 @@ public class ScanPhaseTests : IDisposable
 
         Assert.Empty(results);
         Assert.Empty(_world.LeftoverCopies());
+    }
+
+    [Fact]
+    public async Task WhileAToolRunsAloneItsStatusNamesTheSourceOfTheRepoItIsOn()
+    {
+        await WorldWithReposAsync(1);
+        string? seen = null;
+        var tool = Semgrep(decide: w =>
+        {
+            seen = w.Run.Status.Snapshot().Steps.Single(s => s.Name == "Semgrep").Message;
+            return null;
+        });
+
+        await tool.RunAsync(_world.Context);
+
+        Assert.Equal("0 of 1 processed; now: GitHub acme/repo1", seen);
     }
 
     [Fact]

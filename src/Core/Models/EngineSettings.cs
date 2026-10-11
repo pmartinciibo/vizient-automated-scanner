@@ -29,8 +29,41 @@ public sealed record SourceSettings
     public const string GitHub = "GitHub";
 
     public string Source { get; init; } = string.Empty;
+
+    /// <summary>
+    /// What request.json calls this entry (tools.RepoClone.sources.&lt;name&gt;), to turn it off or only list it for one run.
+    /// Required, and unique among the entries.
+    /// </summary>
+    public string? Name { get; init; }
+
     public string Org { get; init; } = string.Empty;
     public string? TokenSecret { get; init; }
+
+    /// <summary>
+    /// GitHub only. Also scan the repos owned by the account the token belongs to (a person, not an organization), shown
+    /// under the account's name as its org. Off by default: the organizations are the estate, and a personal
+    /// account's repos are not. A fine-grained token made for a personal account reaches nothing else.
+    /// </summary>
+    public bool IncludeOwnRepos { get; init; }
+
+    /// <summary>
+    /// The orgs this entry names: <see cref="Org"/> and <see cref="Orgs"/> together, each once. An Azure DevOps entry may
+    /// name one or several, all read with the one token.
+    /// </summary>
+    public IReadOnlyList<string> NamedOrgs() =>
+        (Orgs ?? []).Prepend(Org)
+            .Select(o => o?.Trim() ?? string.Empty)
+            .Where(o => o.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>
+    /// Organizations to scan. GitHub: as well as the ones discovered from the token. For orgs the token cannot find
+    /// by itself, such as one whose public repos the account can read but which it does not belong to. Left out means
+    /// discovery alone. Azure DevOps: more orgs for the same token, besides "org". An org that cannot be listed is
+    /// flagged for that org only.
+    /// </summary>
+    public List<string>? Orgs { get; init; }
 }
 
 /// <summary>How the scan phase (the five scanners) works through the repos.</summary>

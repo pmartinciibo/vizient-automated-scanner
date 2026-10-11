@@ -31,6 +31,7 @@ public sealed class RepoWorkLoop
     private int _failed;
     private int _skipped;
     private int _running;
+    private readonly List<string> _runningLabels = new();
     private string? _message;
 
     public RepoWorkLoop(RunContext context, string tool, ToolLimits limits, TimeSpan? pollInterval = null)
@@ -149,8 +150,24 @@ public sealed class RepoWorkLoop
         var request = _context.Request;
         var markers = _context.Markers;
 
-        foreach (var repo in repos.OrderBy(r => r.Key, StringComparer.Ordinal))
+        var ordered = repos.OrderBy(r => r.Key, StringComparer.Ordinal).ToList();
+        var checkedCount = 0;
+        var lastNote = System.Diagnostics.Stopwatch.StartNew();
+
+        foreach (var repo in ordered)
         {
+            if (lastNote.ElapsedMilliseconds >= 1000)
+            {
+                lastNote.Restart();
+                var (seen, skippedSoFar) = (checkedCount, _skipped);
+                _context.Status.UpdateStep(_tool, step => step with
+                {
+                    Message = $"planning: {seen} of {ordered.Count} repos checked, {skippedSoFar} skipped so far"
+                });
+            }
+
+            checkedCount++;
+
             // Continuing a run: finished repos are not repeated, and a retry pass touches only the failed ones.
             if (request.Mode == ScanMode.RetryFailed && !markers.IsFailed(_tool, repo.Key))
             {
@@ -204,7 +221,7 @@ public sealed class RepoWorkLoop
         lock (_gate)
         {
             _running++;
-            _message = Label(repo);
+            _runningLabels.Add(RepoProgress.Label(repo));
         }
 
         Publish();
@@ -219,6 +236,7 @@ public sealed class RepoWorkLoop
             lock (_gate)
             {
                 _running--;
+                _runningLabels.Remove(RepoProgress.Label(repo));
             }
 
             Publish();
@@ -258,6 +276,7 @@ public sealed class RepoWorkLoop
         lock (_gate)
         {
             _running--;
+            _runningLabels.Remove(RepoProgress.Label(repo));
             switch (result.Kind)
             {
                 case RepoWorkKind.Done:
@@ -353,6 +372,12 @@ public sealed class RepoWorkLoop
         lock (_gate)
         {
             (total, done, failed, skipped, running, message) = (_total, _done, _failed, _skipped, _running, _message);
+
+            // A message set on purpose (stopped, disabled) stands. Otherwise say how far along it is and what is running now.
+            if (message is null && _running > 0)
+            {
+                message = RepoProgress.Text(_done, _failed, _skipped, _total, _runningLabels);
+            }
         }
 
         _context.Status.UpdateStep(_tool, step => step with
@@ -367,6 +392,5 @@ public sealed class RepoWorkLoop
         });
     }
 
-    private static string Label(RepoOutcome repo) =>
-        string.Join('/', new[] { repo.Org, repo.Project, repo.Name }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
 }

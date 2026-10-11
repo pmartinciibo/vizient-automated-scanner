@@ -21,8 +21,9 @@
       "maxParallel": null,
       "timeoutMinutes": null,
       "sources": {
-        "ADO": { "enabled": false },
-        "GitHub": { "enabled": true }
+        "VizientInc": { "state": "ListOnly" },
+        "ClaroHealthCareADO": { "state": "ListOnly" },
+        "GitHubRepos": { "state": "ListOnly" }
       }
     },
     "TruffleHog": {

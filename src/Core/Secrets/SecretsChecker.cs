@@ -33,7 +33,10 @@ public static class SecretsChecker
     /// Every secret engine.json names, with what needs it: the tokens of the sources (if RepoClone is on), and for each
     /// tool that is on its token, its environment variables and the password it runs under.
     /// </summary>
-    public static IReadOnlyDictionary<string, string> RequiredSecrets(EngineSettings settings, Func<string, bool> isToolEnabled)
+    public static IReadOnlyDictionary<string, string> RequiredSecrets(
+        EngineSettings settings,
+        Func<string, bool> isToolEnabled,
+        Func<SourceSettings, bool>? isSourceEnabled = null)
     {
         var required = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -47,9 +50,9 @@ public static class SecretsChecker
 
         if (isToolEnabled(ToolNames.RepoClone))
         {
-            foreach (var source in settings.Sources)
+            foreach (var source in settings.Sources.Where(s => isSourceEnabled?.Invoke(s) ?? true))
             {
-                Need(source.TokenSecret, $"{source.Source} source {source.Org}");
+                Need(source.TokenSecret, source.NamedOrgs().Count == 0 ? $"{source.Source} source" : $"{source.Source} source {string.Join(", ", source.NamedOrgs())}");
             }
         }
 
@@ -73,12 +76,13 @@ public static class SecretsChecker
         SecretStore store,
         Func<string, bool> isToolEnabled,
         DateOnly today,
-        string? fileError = null)
+        string? fileError = null,
+        Func<SourceSettings, bool>? isSourceEnabled = null)
     {
         var ok = new List<string>();
         var findings = new List<SecretFinding>();
 
-        foreach (var (name, neededBy) in RequiredSecrets(settings, isToolEnabled).OrderBy(r => r.Key, StringComparer.Ordinal))
+        foreach (var (name, neededBy) in RequiredSecrets(settings, isToolEnabled, isSourceEnabled).OrderBy(r => r.Key, StringComparer.Ordinal))
         {
             var info = store.Info(name, today, settings.Secrets.ExpiryWarnDays);
             switch (info?.Status)

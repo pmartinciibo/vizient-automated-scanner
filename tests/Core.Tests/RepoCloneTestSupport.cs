@@ -83,11 +83,47 @@ public sealed class FakeSources : HttpMessageHandler
     /// <summary>Replaces the answer to GET /user/orgs, to make that call fail.</summary>
     public Func<Uri, HttpResponseMessage?>? OrgsRespond { get; set; }
 
+    /// <summary>The repositories GET /user/repos answers with, by owner. Empty unless a test sets it.</summary>
+    public (string Owner, string Type)[] UserRepos { get; set; } = [];
+
+    /// <summary>The repos of the token's own account, as GET /user/repos?affiliation=owner answers (whole repo objects).</summary>
+    public string[] OwnRepos { get; set; } = [];
+
+    /// <summary>The X-OAuth-Scopes header of GET /user. Null sends none, as GitHub does for a fine-grained token.</summary>
+    public string? UserScopes { get; set; }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         lock (_gate)
         {
             Requests.Add((request.RequestUri!, request.Headers.Authorization?.ToString()));
+        }
+
+        if (request.RequestUri!.Host == "api.github.com" && request.RequestUri.AbsolutePath == "/user")
+        {
+            var who = FakeRapid7.Json(HttpStatusCode.OK, "{\"login\":\"tester\"}");
+            if (UserScopes is not null)
+            {
+                who.Headers.TryAddWithoutValidation("X-OAuth-Scopes", UserScopes);
+            }
+
+            return Task.FromResult(who);
+        }
+
+        if (request.RequestUri!.Host == "api.github.com" && request.RequestUri.AbsolutePath == "/user/repos"
+            && !request.RequestUri.Query.Contains("organization_member"))
+        {
+            var number = int.Parse(request.RequestUri.Query.Split('&').Single(p => p.StartsWith("page=")).Split('=')[1]);
+            var page = OwnRepos.Skip((number - 1) * 100).Take(100);
+            return Task.FromResult(FakeRapid7.Json(HttpStatusCode.OK, $"[{string.Join(",", page)}]"));
+        }
+
+        if (request.RequestUri!.Host == "api.github.com" && request.RequestUri.AbsolutePath == "/user/repos")
+        {
+            var number = int.Parse(request.RequestUri.Query.Split('&').Single(p => p.StartsWith("page=")).Split('=')[1]);
+            var page = UserRepos.Skip((number - 1) * 100).Take(100);
+            return Task.FromResult(FakeRapid7.Json(HttpStatusCode.OK,
+                $"[{string.Join(",", page.Select(r => $"{{\"owner\":{{\"login\":\"{r.Owner}\",\"type\":\"{r.Type}\"}}}}"))}]"));
         }
 
         if (request.RequestUri!.Host == "api.github.com" && request.RequestUri.AbsolutePath == "/user/orgs")
@@ -125,7 +161,7 @@ public sealed class RepoCloneRun : IDisposable
 
         var baseSettings = new EngineSettings
         {
-            Sources = [new SourceSettings { Source = "GitHub", TokenSecret = "gh-token" }],
+            Sources = [new SourceSettings { Name = "GitHub", Source = "GitHub", TokenSecret = "gh-token" }],
             Retry = new RetrySettings { MaxAttempts = 2, BackoffSeconds = 0 },
             Tools = new() { ["RepoClone"] = new ToolSettings { MaxParallel = 4, TimeoutMinutes = 2 } }
         };

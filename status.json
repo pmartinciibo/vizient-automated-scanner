@@ -1,15 +1,15 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-11T13-53-44Z",
+  "runId": "2026-10-11T21-25-14Z",
   "revision": 1,
   "attempt": 1,
-  "state": "CompletedWithFlags",
+  "state": "Completed",
   "paused": false,
-  "pid": 28912,
+  "pid": 30928,
   "mode": "Normal",
-  "startedAt": "2026-10-11T13:53:44.6544749+00:00",
-  "updatedAt": "2026-10-11T13:53:45.379682+00:00",
-  "endedAt": "2026-10-11T13:53:45.3781431+00:00",
+  "startedAt": "2026-10-11T21:25:14.2192139+00:00",
+  "updatedAt": "2026-10-11T21:25:53.4781536+00:00",
+  "endedAt": "2026-10-11T21:25:53.4764277+00:00",
   "phase": "Finalize",
   "overall": {
     "percent": 100,
@@ -41,14 +41,14 @@
     },
     {
       "name": "RepoClone",
-      "status": "Failed",
+      "status": "Completed",
       "done": 0,
       "total": 0,
       "failed": 0,
-      "skipped": 0,
+      "skipped": 4481,
       "canaries": 0,
       "running": 0,
-      "message": "InvalidOperationException: No organization could be listed (GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
+      "message": null
     },
     {
       "name": "TruffleHog",
@@ -109,34 +109,54 @@
   "effective": {},
   "alerts": [
     {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "ado-pat",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T13:53:44.724786+00:00"
-    },
-    {
-      "type": "SourceLeftOut",
+      "type": "SourceListOnly",
       "tool": "RepoClone",
       "repo": null,
-      "name": "ADO/vizientinc: turned off by the request",
+      "name": "ADO VizientInc (vizientinc, RnD-Vizient): listed only by the request, nothing cloned or updated",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T13:53:44.8061791+00:00"
+      "at": "2026-10-11T21:25:14.4824591+00:00"
+    },
+    {
+      "type": "SourceListOnly",
+      "tool": "RepoClone",
+      "repo": null,
+      "name": "ADO ClaroHealthCareADO (clarohealthcare): listed only by the request, nothing cloned or updated",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T21:25:14.4832166+00:00"
+    },
+    {
+      "type": "SourceListOnly",
+      "tool": "RepoClone",
+      "repo": null,
+      "name": "GitHub GitHubRepos (preftech, aptitudemarketplace, safeandreliable): listed only by the request, nothing cloned or updated",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T21:25:14.4832278+00:00"
     },
     {
       "type": "OrgDiscoveryFailed",
       "tool": "RepoClone",
       "repo": null,
-      "name": "GitHub/RnD-Vizient: HTTP 404 from https://api.github.com/orgs/RnD-Vizient/repos?per_page=100\u0026page=1\u0026type=all: {\u0022message\u0022:\u0022Not Found\u0022,\u0022documentation_url\u0022:\u0022https://docs.github.com/rest/repos/repos#list-organization-repositories\u0022,\u0022status\u0022:\u0022404\u0022}",
+      "name": "ADO/RnD-Vizient: HTTP 404 from https://dev.azure.com/RnD-Vizient/_apis/projects?api-version=7.1\u0026$top=100: The resource cannot be found.",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T13:53:45.3571122+00:00"
+      "at": "2026-10-11T21:25:30.4555821+00:00"
+    },
+    {
+      "type": "OrgNotListed",
+      "tool": "RepoClone",
+      "repo": null,
+      "name": "GitHub/pmartinciibo: not among the organizations of the token this time, kept from the last scan",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T21:25:34.122056+00:00"
     }
   ],
   "lastCommandSeq": 0,
