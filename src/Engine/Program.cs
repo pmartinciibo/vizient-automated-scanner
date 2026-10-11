@@ -4,6 +4,7 @@ using Vizient.AutomatedScanner.Core.Control;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Secrets;
 using Vizient.AutomatedScanner.Core.Status;
+using Vizient.AutomatedScanner.Core.Scan;
 using Vizient.AutomatedScanner.Core.Tools;
 using Vizient.AutomatedScanner.Engine;
 
@@ -105,17 +106,22 @@ var commandWatcher = new CommandWatcher(
     TimeSpan.FromSeconds(context.Config.CommandIntervalSeconds));
 commandWatcher.Start();
 
+// The five scanners take the repos together: one working copy per repo, made from its mirror, scanned by every tool
+// that applies and then deleted.
+var scanPhase = new ScanPhase(
+[
+    new TruffleHogTool(),
+    new SemgrepTool(),
+    new SnykTool(),
+    new SonarStandardTool(),
+    new SonarDotNetTool()
+]);
+
 var orchestrator = new RunOrchestrator(
     new Rapid7Import(),
     new CheckMarxImport(),
     new RepoCloneTool(),
-    [
-        new TruffleHogTool(),
-        new SemgrepTool(),
-        new SnykTool(),
-        new SonarStandardTool(),
-        new SonarDotNetTool()
-    ]);
+    scanPhase.Tools);
 
 RunState finalState;
 int exitCode;

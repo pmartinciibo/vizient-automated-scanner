@@ -11,12 +11,12 @@
       "maxParallel": null,
       "timeoutMinutes": null
     },
-    "RepoClone": {
+    "CheckMarx": {
       "enabled": false,
       "maxParallel": null,
       "timeoutMinutes": null
     },
-    "CheckMarx": {
+    "RepoClone": {
       "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null

@@ -43,6 +43,12 @@ public sealed record RepoWorkResult
 /// <summary>Everything a tool needs to scan one repo.</summary>
 public sealed record RepoWorkContext(string Tool, RepoOutcome Repo, RunContext Run, ToolLimits Limits)
 {
+    /// <summary>
+    /// The temporary working copy of the repo, when the caller has made one (see RepoExpander). Null when the tool is to
+    /// make its own or has no use for one.
+    /// </summary>
+    public string? WorkingPath { get; init; }
+
     /// <summary>Where this tool's raw output for the repo goes (results\&lt;tool&gt;\&lt;key&gt;.json).</summary>
     public string ResultFile => Run.Paths.ResultFile(Tool, Repo.Key);
 }

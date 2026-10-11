@@ -17,7 +17,7 @@ public sealed class ProcessRunner : IProcessRunner
     {
         Validate(spec);
 
-        var redactor = new SecretRedactor(spec.SecretEnvironment.Values.Concat(spec.SecretValues));
+        var redactor = new SecretRedactor(spec.SecretEnvironment.Values.Concat(spec.SecretValues).Concat(spec.RunAs is { } runAs ? [runAs.Password] : []));
         var maxAttempts = Math.Max(1, spec.Retry.MaxAttempts);
         var clock = Stopwatch.StartNew();
 
@@ -190,6 +190,20 @@ public sealed class ProcessRunner : IProcessRunner
             startInfo.ArgumentList.Add(argument);
         }
 
+        if (spec.RunAs is { } runAs)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                throw new PlatformNotSupportedException("Running as another account is only supported on Windows.");
+            }
+
+            var separator = runAs.Account.IndexOf('\\');
+            startInfo.Domain = separator > 0 ? runAs.Account[..separator] : string.Empty;
+            startInfo.UserName = separator > 0 ? runAs.Account[(separator + 1)..] : runAs.Account;
+            startInfo.Password = ToSecureString(runAs.Password);
+            startInfo.LoadUserProfile = true;
+        }
+
         if (spec.WorkingDirectory is not null)
         {
             startInfo.WorkingDirectory = spec.WorkingDirectory;
@@ -206,6 +220,18 @@ public sealed class ProcessRunner : IProcessRunner
         }
 
         return startInfo;
+    }
+
+    private static System.Security.SecureString ToSecureString(string value)
+    {
+        var secure = new System.Security.SecureString();
+        foreach (var c in value)
+        {
+            secure.AppendChar(c);
+        }
+
+        secure.MakeReadOnly();
+        return secure;
     }
 
     // Tools must never wait for input, so give them an immediately closed stdin.

@@ -11,6 +11,7 @@ public sealed record EngineSettings
     public SkipSettings Skip { get; init; } = new();
     public RetrySettings Retry { get; init; } = new();
     public SecretsSettings Secrets { get; init; } = new();
+    public ScanSettings Scan { get; init; } = new();
 
     /// <summary>Keyed by tool name. A tool with no entry uses the built-in defaults.</summary>
     public Dictionary<string, ToolSettings> Tools { get; init; } = new();
@@ -27,6 +28,17 @@ public sealed record SourceSettings
     public string Source { get; init; } = string.Empty;
     public string Org { get; init; } = string.Empty;
     public string? TokenSecret { get; init; }
+}
+
+/// <summary>How the scan phase (the five scanners) works through the repos.</summary>
+public sealed record ScanSettings
+{
+    /// <summary>
+    /// How many repos have a working copy on disk at once. Each one is expanded from its mirror, scanned by every
+    /// tool that applies, and deleted. Left out means the largest maxParallel of the scanners that are running, so
+    /// the slowest tool is never starved of repos.
+    /// </summary>
+    public int? MaxParallelRepos { get; init; }
 }
 
 public sealed record SkipSettings
@@ -102,6 +114,18 @@ public sealed record ToolSettings
     /// </summary>
     public List<string>? Areas { get; init; }
 
+    /// <summary>RepoClone only. Where git is, if it is not on the PATH of the account the engine runs as. Defaults to "git".</summary>
+    public string? GitPath { get; init; }
+
+    /// <summary>RepoClone only. Where the Azure CLI is, if it is not on the PATH. Defaults to "az.cmd". It is how Azure DevOps access tokens are obtained.</summary>
+    public string? AzPath { get; init; }
+
+    /// <summary>
+    /// RepoClone only. The Entra tenants to try for Azure DevOps. Left out means every tenant the signed-in Azure CLI
+    /// account knows (az account list). For each organization the first tenant whose token can list it is used.
+    /// </summary>
+    public List<string>? AdoTenantIds { get; init; }
+
     /// <summary>CheckMarx only. The tenant (realm) in the token address, for example in https://.../realms/{tenant}/.... Required unless tokenUrl has no {tenant} in it.</summary>
     public string? Tenant { get; init; }
 
@@ -122,6 +146,18 @@ public sealed record ToolSettings
 
     /// <summary>CheckMarx only. Read findings from at most this many scans, for a cheap trial run. 0 or left out means no limit.</summary>
     public int? ResultsMaxScans { get; init; }
+
+    /// <summary>
+    /// Scanners. The program to run, if it is not on the PATH of the account the engine runs as: trufflehog,
+    /// semgrep, snyk, sonar-scanner (SonarStandard) or dotnet-sonarscanner (SonarDotNet).
+    /// </summary>
+    public string? ExePath { get; init; }
+
+    /// <summary>SonarDotNet only. The dotnet program that builds the repo. Defaults to "dotnet".</summary>
+    public string? DotnetPath { get; init; }
+
+    /// <summary>Snyk only. The Snyk organization the results are reported to (--org). Left out means the account's default.</summary>
+    public string? Org { get; init; }
 
     /// <summary>SonarQube.</summary>
     public string? ServerUrl { get; init; }

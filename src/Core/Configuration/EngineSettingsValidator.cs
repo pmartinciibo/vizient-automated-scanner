@@ -20,6 +20,7 @@ public static class EngineSettingsValidator
         ValidateRetry(settings.Retry);
         ValidateSkip(settings.Skip);
         ValidateSecrets(settings.Secrets);
+        ValidateScan(settings.Scan);
 
         foreach (var (name, tool) in settings.Tools)
         {
@@ -62,6 +63,14 @@ public static class EngineSettingsValidator
         if (retry.BackoffSeconds < 0)
         {
             throw Bad("retry.backoffSeconds cannot be negative.");
+        }
+    }
+
+    private static void ValidateScan(ScanSettings scan)
+    {
+        if (scan.MaxParallelRepos is <= 0)
+        {
+            throw Bad("scan.maxParallelRepos must be 1 or more.");
         }
     }
 
@@ -123,6 +132,11 @@ public static class EngineSettingsValidator
             ValidateCheckMarx(tool);
         }
 
+        if (name == ToolNames.RepoClone)
+        {
+            ValidateRepoClone(tool);
+        }
+
         if (tool.RunAs is { } runAs && (string.IsNullOrWhiteSpace(runAs.Account) || string.IsNullOrWhiteSpace(runAs.PasswordSecret)))
         {
             throw Bad($"tools.{name}.runAs needs both account and passwordSecret.");
@@ -170,6 +184,28 @@ public static class EngineSettingsValidator
             {
                 throw Bad($"tools.Rapid7.areas must be some of: {string.Join(", ", Rapid7Areas)}." +
                     (unknown.Count > 0 ? $" Not known: {string.Join(", ", unknown)}." : string.Empty));
+            }
+        }
+    }
+
+    private static void ValidateRepoClone(ToolSettings tool)
+    {
+        if (tool.GitPath is not null && string.IsNullOrWhiteSpace(tool.GitPath))
+        {
+            throw Bad("tools.RepoClone.gitPath is blank. Leave it out to use git from the PATH.");
+        }
+
+        if (tool.AzPath is not null && string.IsNullOrWhiteSpace(tool.AzPath))
+        {
+            throw Bad("tools.RepoClone.azPath is blank. Leave it out to use az.cmd from the PATH.");
+        }
+
+        // A tenant goes onto the Azure CLI's command line, so it must be a plain id or domain name.
+        foreach (var tenant in tool.AdoTenantIds ?? [])
+        {
+            if (!Core.IO.SafeName.IsValid(tenant))
+            {
+                throw Bad($"tools.RepoClone.adoTenantIds has \"{tenant}\", which is not a tenant id or domain name.");
             }
         }
     }

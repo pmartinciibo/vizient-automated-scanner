@@ -64,6 +64,12 @@ in and out communication path.
     Without `--file` the commands use the copy beside the executable.
   - DPAPI ties the file to the Windows account and machine that wrote it. A dev copy does not
     work on the VM: run `engine secrets set` there, as the service account.
+- RepoClone keeps one bare mirror per repo (`git clone --mirror`, `remote update --prune`), so every
+  branch and tag is local. A scan makes a temporary working copy from the mirror (`RepoExpander`) and
+  deletes it afterwards. Decided after the design doc, which says working clone; this wins.
+- Phase 2 is repo-centric (`ScanPhase`): up to `scan.maxParallelRepos` repos at once; for each, one working copy is
+  expanded, every tool that applies scans it in parallel (each tool keeps its own maxParallel), then it is deleted.
+  Scanners derive from `ScanToolBase` (skip policy, markers) and `ProcessScanTool` (program, secrets, runAs).
 - Snyk (dependency mode) and SonarDotNet build the code they scan, so they run under a
   locked-down account (`runAs`).
 

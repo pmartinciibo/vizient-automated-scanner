@@ -1,15 +1,15 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-10T23-38-46Z",
+  "runId": "2026-10-11T03-00-22Z",
   "revision": 1,
   "attempt": 1,
-  "state": "Completed",
+  "state": "CompletedWithFlags",
   "paused": false,
-  "pid": 16984,
+  "pid": 30496,
   "mode": "Normal",
-  "startedAt": "2026-10-10T23:38:46.7131559+00:00",
-  "updatedAt": "2026-10-11T00:39:29.4975336+00:00",
-  "endedAt": "2026-10-11T00:39:29.4960118+00:00",
+  "startedAt": "2026-10-11T03:00:22.6385073+00:00",
+  "updatedAt": "2026-10-11T03:00:22.7744812+00:00",
+  "endedAt": "2026-10-11T03:00:22.773678+00:00",
   "phase": "Finalize",
   "overall": {
     "percent": 100,
@@ -30,17 +30,6 @@
     },
     {
       "name": "CheckMarx",
-      "status": "Completed",
-      "done": 156,
-      "total": 156,
-      "failed": 0,
-      "skipped": 0,
-      "canaries": 0,
-      "running": 0,
-      "message": null
-    },
-    {
-      "name": "RepoClone",
       "status": "Disabled",
       "done": 0,
       "total": 0,
@@ -49,6 +38,17 @@
       "canaries": 0,
       "running": 0,
       "message": "disabled in request.json"
+    },
+    {
+      "name": "RepoClone",
+      "status": "Failed",
+      "done": 0,
+      "total": 0,
+      "failed": 0,
+      "skipped": 0,
+      "canaries": 0,
+      "running": 0,
+      "message": "InvalidOperationException: No organization could be listed (ADO/vizientinc, GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
     },
     {
       "name": "TruffleHog",
@@ -112,11 +112,31 @@
       "type": "MissingSecret",
       "tool": null,
       "repo": null,
+      "name": "ado-pat",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T03:00:22.6892813+00:00"
+    },
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
       "name": "buildtools-account-password",
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T23:38:46.7656469+00:00"
+      "at": "2026-10-11T03:00:22.6892813+00:00"
+    },
+    {
+      "type": "MissingSecret",
+      "tool": null,
+      "repo": null,
+      "name": "github-token",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T03:00:22.6892813+00:00"
     },
     {
       "type": "MissingSecret",
@@ -126,7 +146,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T23:38:46.7656469+00:00"
+      "at": "2026-10-11T03:00:22.6892813+00:00"
     },
     {
       "type": "MissingSecret",
@@ -136,7 +156,27 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-10T23:38:46.7656469+00:00"
+      "at": "2026-10-11T03:00:22.6892813+00:00"
+    },
+    {
+      "type": "OrgDiscoveryFailed",
+      "tool": "RepoClone",
+      "repo": null,
+      "name": "ADO/vizientinc: Secret \u0027ado-pat\u0027 (needed by RepoClone (ADO/vizientinc)) has not been set. Use: engine secrets set ado-pat",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T03:00:22.7577603+00:00"
+    },
+    {
+      "type": "OrgDiscoveryFailed",
+      "tool": "RepoClone",
+      "repo": null,
+      "name": "GitHub/RnD-Vizient: Secret \u0027github-token\u0027 (needed by RepoClone (GitHub/RnD-Vizient)) has not been set. Use: engine secrets set github-token",
+      "expiresAt": null,
+      "was": null,
+      "now": null,
+      "at": "2026-10-11T03:00:22.7578359+00:00"
     }
   ],
   "lastCommandSeq": 0,

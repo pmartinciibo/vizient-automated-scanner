@@ -1,12 +1,12 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-10T23-38-46Z",
+  "runId": "2026-10-11T03-00-22Z",
   "requestFile": "C:\\envs\\Vizient\\AutomatedScanner\\request.json",
-  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\2026-10-10T23-38-46Z",
-  "state": "Completed",
-  "exitCode": 0,
-  "startedAt": "2026-10-10T23:38:46.7131559+00:00",
-  "endedAt": "2026-10-11T00:39:29.4960118+00:00",
+  "runDirectory": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs\\2026-10-11T03-00-22Z",
+  "state": "CompletedWithFlags",
+  "exitCode": 1,
+  "startedAt": "2026-10-11T03:00:22.6385073+00:00",
+  "endedAt": "2026-10-11T03:00:22.773678+00:00",
   "error": null,
   "tools": [
     {
@@ -16,13 +16,13 @@
     },
     {
       "name": "CheckMarx",
-      "status": "Completed",
-      "message": null
+      "status": "Disabled",
+      "message": "disabled in request.json"
     },
     {
       "name": "RepoClone",
-      "status": "Disabled",
-      "message": "disabled in request.json"
+      "status": "Failed",
+      "message": "InvalidOperationException: No organization could be listed (ADO/vizientinc, GitHub/RnD-Vizient). See the OrgDiscoveryFailed alerts."
     },
     {
       "name": "TruffleHog",

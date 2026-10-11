@@ -1,4 +1,5 @@
 using Vizient.AutomatedScanner.Core.Models;
+using Vizient.AutomatedScanner.Core.RepoClone;
 using Vizient.AutomatedScanner.Core.Skip;
 using Vizient.AutomatedScanner.Core.Work;
 
@@ -7,8 +8,13 @@ namespace Vizient.AutomatedScanner.Core.Tools;
 /// <summary>
 /// The base for the five scanners (TruffleHog, Semgrep, Snyk, SonarStandard, SonarDotNet). It takes the repos
 /// RepoClone reported, drops the ones this tool should not touch, applies the skip policy (skip what has not
-/// changed since the last clean scan, but scan a random few anyway as canaries), and runs the rest through the
-/// shared loop. A scanner supplies only what it does for one repo.
+/// changed since the last clean scan, but scan a random few anyway as canaries), and runs the rest. A scanner
+/// supplies only what it does for one repo.
+/// <para>
+/// In a run the scanners do not each walk the repos on their own. <see cref="Scan.ScanPhase"/> takes them repo by
+/// repo: one working copy is made from the mirror, every tool that applies scans it, and the copy is deleted.
+/// Run alone (<see cref="RunAsync"/>), a tool makes its own working copy for each repo.
+/// </para>
 /// </summary>
 public abstract class ScanToolBase : ITool
 {
@@ -20,21 +26,47 @@ public abstract class ScanToolBase : ITool
     /// <summary>The source of randomness for picking canaries. Tests replace it.</summary>
     protected virtual Random Random => Random.Shared;
 
-    /// <summary>Whether this tool applies to the repo at all (for example, SonarDotNet only for .NET repos).</summary>
+    /// <summary>Whether this tool applies to the repo at all, from what is known before it is opened. A tool that has to look inside the repo says so later with a skipped result.</summary>
     protected virtual bool IsApplicable(RepoOutcome repo) => true;
 
     /// <summary>
-    /// Runs the tool on one repo, using <c>work.Run.Processes</c> to start it. On success return a done marker with
-    /// the start and end time and the finding count. The skip key fields (SHA, mode, versions, config hash) are
-    /// filled in from the policy if the tool leaves them blank.
+    /// Whether the tool reads files, so needs a working copy made from the mirror. False for a tool that reads the
+    /// mirror itself (TruffleHog in git mode) or does not look at the repo at all.
+    /// </summary>
+    protected virtual bool NeedsWorkingCopy(RunContext context) => false;
+
+    /// <summary>
+    /// Checks, once before any repo, that the tool can work: its program runs, its secrets and server are there. A
+    /// problem here fails the whole tool at once with one clear message, instead of a failed marker for every repo.
+    /// </summary>
+    protected virtual Task PrepareAsync(RunContext context, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Runs the tool on one repo, using <c>work.Run.Processes</c> to start it, in <c>work.WorkingPath</c> when
+    /// <see cref="NeedsWorkingCopy"/> is true. On success return a done marker with the start and end time and the
+    /// finding count. The skip key fields (SHA, mode, versions, config hash) are filled in from the policy if the tool
+    /// leaves them blank.
     /// </summary>
     protected abstract Task<RepoWorkResult> ScanRepoAsync(RepoWorkContext work, CancellationToken cancellationToken);
 
-    public async Task RunAsync(RunContext context, CancellationToken cancellationToken = default)
+    /// <summary>What this tool will look at in this run and what the skip policy says about each repo.</summary>
+    internal sealed record ToolPlan(
+        IReadOnlyList<RepoOutcome> Eligible,
+        Func<RepoOutcome, ToolSkippedMarker?> NotInScope,
+        SkipRules Rules,
+        SkipPlan Skip)
     {
-        await context.FoundState.EnsureLoadedAsync(cancellationToken);
+        /// <summary>A marker if the tool does not run for the repo (not applicable, archived, unchanged), otherwise null.</summary>
+        public ToolSkippedMarker? SkipReasonFor(RepoOutcome repo) => NotInScope(repo) ?? Skip.SkipMarkerFor(repo.Key);
+    }
 
-        var repos = context.Repos.Snapshot();
+    internal Task PrepareForRunAsync(RunContext context, CancellationToken cancellationToken) =>
+        PrepareAsync(context, cancellationToken);
+
+    internal bool UsesWorkingCopy(RunContext context) => NeedsWorkingCopy(context);
+
+    internal ToolPlan MakePlan(RunContext context, IReadOnlyList<RepoOutcome> repos)
+    {
         var scanArchived = context.Config.Current.ScanArchived;
         ToolSkippedMarker? NotInScope(RepoOutcome repo) => RepoEligibility.SkipFor(repo, scanArchived, IsApplicable);
         var eligible = repos.Where(r => NotInScope(r) is null).ToList();
@@ -43,9 +75,20 @@ public abstract class ScanToolBase : ITool
         var plan = SkipPlanner.Plan(eligible, rules, key => context.FoundState.Get(Name, key), Random);
         context.Status.UpdateStep(Name, step => step with { Canaries = plan.CanaryCount });
 
+        return new ToolPlan(eligible, NotInScope, rules, plan);
+    }
+
+    public async Task RunAsync(RunContext context, CancellationToken cancellationToken = default)
+    {
+        await PrepareAsync(context, cancellationToken);
+        await context.FoundState.EnsureLoadedAsync(cancellationToken);
+
+        var repos = context.Repos.Snapshot();
+        var plan = MakePlan(context, repos);
+
         var work = new RepoWork(
-            (repoWork, token) => ScanWithPolicyAsync(repoWork, plan, rules, token),
-            repo => NotInScope(repo) ?? plan.SkipMarkerFor(repo.Key),
+            (repoWork, token) => ScanWithPolicyAsync(repoWork, plan, token),
+            plan.SkipReasonFor,
             (repo, marker, token) => RecordCleanScanAsync(context, repo, marker, token));
 
         var loop = new RepoWorkLoop(context, Name, ToolLimits.For(context, Name));
@@ -53,7 +96,7 @@ public abstract class ScanToolBase : ITool
         {
             var summary = await loop.RunAsync(repos, work, cancellationToken);
 
-            if (WasFullPass(summary, eligible.Count))
+            if (WasFullPass(summary.Done, summary.Failed, summary.NotStarted, summary.StoppedEarly, plan.Eligible.Count))
             {
                 context.FoundState.CompleteFullPass(Name, Time.GetUtcNow());
             }
@@ -65,14 +108,37 @@ public abstract class ScanToolBase : ITool
         }
     }
 
-    // Fills in the skip key on a clean result, so every scanner records it the same way.
-    private async Task<RepoWorkResult> ScanWithPolicyAsync(
-        RepoWorkContext work,
-        SkipPlan plan,
-        SkipRules rules,
-        CancellationToken cancellationToken)
+    // Fills in the skip key on a clean result, so every scanner records it the same way. A tool that needs files and
+    // was not given a working copy makes its own for this one repo and removes it afterwards.
+    internal async Task<RepoWorkResult> ScanWithPolicyAsync(RepoWorkContext work, ToolPlan plan, CancellationToken cancellationToken)
     {
-        var result = await ScanRepoAsync(work, cancellationToken);
+        RepoWorkResult result;
+        ExpandedRepo? own = null;
+        try
+        {
+            if (work.WorkingPath is null && NeedsWorkingCopy(work.Run))
+            {
+                try
+                {
+                    own = await new RepoExpander(work.Run).ExpandAsync(work.Repo, cancellationToken);
+                    work = work with { WorkingPath = own.Path };
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return RepoWorkResult.Failed("ExpandFailed", ex.Message);
+                }
+            }
+
+            result = await ScanRepoAsync(work, cancellationToken);
+        }
+        finally
+        {
+            if (own is not null)
+            {
+                await own.DisposeAsync();
+            }
+        }
+
         if (result.Kind != RepoWorkKind.Done)
         {
             return result;
@@ -82,17 +148,17 @@ public abstract class ScanToolBase : ITool
         return RepoWorkResult.Done(marker with
         {
             Sha = FirstNonBlank(marker.Sha, work.Repo.HeadSha),
-            ScanMode = FirstNonBlank(marker.ScanMode, rules.Key.ScanMode),
-            ToolVersion = FirstNonBlank(marker.ToolVersion, rules.Key.ToolVersion),
-            RulesVersion = FirstNonBlank(marker.RulesVersion, rules.Key.RulesVersion),
-            ConfigHash = FirstNonBlank(marker.ConfigHash, rules.Key.ConfigHash),
-            Canary = plan.DecisionFor(work.Repo.Key).Canary
+            ScanMode = FirstNonBlank(marker.ScanMode, plan.Rules.Key.ScanMode),
+            ToolVersion = FirstNonBlank(marker.ToolVersion, plan.Rules.Key.ToolVersion),
+            RulesVersion = FirstNonBlank(marker.RulesVersion, plan.Rules.Key.RulesVersion),
+            ConfigHash = FirstNonBlank(marker.ConfigHash, plan.Rules.Key.ConfigHash),
+            Canary = plan.Skip.DecisionFor(work.Repo.Key).Canary
         });
     }
 
     // Runs after the done marker is on disk. A failed repo never gets here, so its stored state is left as it was
     // and the next run scans it again.
-    private Task RecordCleanScanAsync(RunContext context, RepoOutcome repo, ToolDoneMarker marker, CancellationToken cancellationToken)
+    internal Task RecordCleanScanAsync(RunContext context, RepoOutcome repo, ToolDoneMarker marker, CancellationToken cancellationToken)
     {
         var previous = context.FoundState.Get(Name, repo.Key);
 
@@ -125,13 +191,21 @@ public abstract class ScanToolBase : ITool
         return Task.CompletedTask;
     }
 
+    internal void CompleteFullPassIfDone(RunContext context, int done, int failed, int notStarted, bool stoppedEarly, int eligibleCount)
+    {
+        if (WasFullPass(done, failed, notStarted, stoppedEarly, eligibleCount))
+        {
+            context.FoundState.CompleteFullPass(Name, Time.GetUtcNow());
+        }
+    }
+
     // Every repo this tool could scan was tried, none left unstarted and the run not cut short. A repo that
     // failed counts as tried: it has no stored state, so the next run scans it again whatever happens here.
-    private bool WasFullPass(RepoLoopSummary summary, int eligibleCount) =>
+    private static bool WasFullPass(int done, int failed, int notStarted, bool stoppedEarly, int eligibleCount) =>
         eligibleCount > 0
-        && summary.NotStarted == 0
-        && !summary.StoppedEarly
-        && summary.Done + summary.Failed == eligibleCount;
+        && notStarted == 0
+        && !stoppedEarly
+        && done + failed == eligibleCount;
 
     private static string FirstNonBlank(string value, string? fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback ?? string.Empty : value;

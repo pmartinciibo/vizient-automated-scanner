@@ -28,6 +28,9 @@ public sealed record ProcessSpec
     /// <summary>Other values to mask in captured output, for secrets that reach the tool some other way.</summary>
     public IReadOnlyCollection<string> SecretValues { get; init; } = [];
 
+    /// <summary>Run the program as this Windows account instead of the engine's own. Its password is masked like any secret.</summary>
+    public RunAsAccount? RunAs { get; init; }
+
     /// <summary>How long one attempt may run before its whole process tree is killed.</summary>
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(30);
 
@@ -45,6 +48,9 @@ public sealed record ProcessSpec
     /// </summary>
     public string? StdOutFile { get; init; }
 }
+
+/// <summary>A locked-down account (DOMAIN\name or name) and its password, for tools that build the code they scan.</summary>
+public sealed record RunAsAccount(string Account, string Password);
 
 /// <summary>A failed or timed-out attempt is tried again, up to <see cref="MaxAttempts"/> in all.</summary>
 public sealed record RetryPolicy(int MaxAttempts = 1, TimeSpan Backoff = default)

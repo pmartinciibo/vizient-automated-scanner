@@ -222,7 +222,7 @@ public class FoundSnapshotTests : IDisposable
         var context = await StartRunAsync("run-1");
         context.Repos.Record(Gh("gh-1"));
 
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
 
         Assert.True(context.Repos.Prior.HasRepo("ado-1"));
         Assert.True(context.Repos.Prior.HasOrg("ADO", "vizientinc"));
@@ -236,7 +236,7 @@ public class FoundSnapshotTests : IDisposable
         context.Repos.Record(Ado("ado-1", "Claro"));
         context.Repos.Record(Gh("gh-2", remote: false));
 
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
 
         var saved = await new FoundOrgAppRepoStore(_stateRoot).LoadAsync();
         Assert.Equal("run-1", saved.RunId);
@@ -250,13 +250,13 @@ public class FoundSnapshotTests : IDisposable
     {
         var first = await StartRunAsync("run-1");
         first.Repos.Record(Gh("gh-1"));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
 
         var second = await StartRunAsync("run-2");
         second.Repos.Record(Gh("gh-1"));
         second.Repos.Record(Gh("gh-2"));
         second.Repos.Record(Ado("ado-1", "Claro"));
-        await new RepoCloneTool().RunAsync(second);
+        await new SnapshotOnlyRepoClone().RunAsync(second);
 
         var orgs = second.Repos.Orgs().ToDictionary(o => o.Source);
         Assert.True(orgs["GitHub"].ExistedPriorToScan);
@@ -275,7 +275,7 @@ public class FoundSnapshotTests : IDisposable
         var context = await StartRunAsync("run-1");
         context.Repos.Record(Gh("gh-1"));
         context.Repos.Record(Gh("gh-2"));
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
         context.Status.Finish(RunState.Completed);
         await AtomicJsonFile.WriteAsync(context.Invocation.Status, context.Status.Snapshot());
 
@@ -302,7 +302,7 @@ public class FoundSnapshotTests : IDisposable
         var before = await File.ReadAllBytesAsync(store.Path);
         var context = await StartRunAsync("run-1");
 
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
 
         Assert.Equal(before, await File.ReadAllBytesAsync(store.Path));
         Assert.Contains(context.Status.Snapshot().Alerts, a => a.Type == "SnapshotNotUpdated");
@@ -315,6 +315,6 @@ public class FoundSnapshotTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(_stateRoot, FoundOrgAppRepoStore.FileName), "{ not json");
         var context = await StartRunAsync("run-1");
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => new RepoCloneTool().RunAsync(context));
+        await Assert.ThrowsAsync<InvalidDataException>(() => new SnapshotOnlyRepoClone().RunAsync(context));
     }
 }

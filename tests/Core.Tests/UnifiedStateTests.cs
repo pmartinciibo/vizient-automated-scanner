@@ -86,7 +86,7 @@ public class UnifiedStateTests : IDisposable
     {
         var context = await NewRunAsync(Gh(1), Ado(1, "Claro"));
 
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
         await new Scanner().RunAsync(context);
 
         // The .bak is the previous version of the same file.
@@ -100,7 +100,7 @@ public class UnifiedStateTests : IDisposable
     public async Task TheFileHoldsTheHierarchyEachReposShaAndTheScanStateUnderIt()
     {
         var context = await NewRunAsync(Gh(1), Ado(1, "Claro"), Ado(2, "Claro"));
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
         await new Scanner().RunAsync(context);
 
         using var json = JsonDocument.Parse(await File.ReadAllTextAsync(StateFile));
@@ -121,7 +121,7 @@ public class UnifiedStateTests : IDisposable
     public async Task ARepoNoToolHasScannedYetHasNoScanEntryAndNoNoise()
     {
         var context = await NewRunAsync(Gh(1) with { HeadSha = null });
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
 
         var text = await File.ReadAllTextAsync(StateFile);
 
@@ -135,7 +135,7 @@ public class UnifiedStateTests : IDisposable
     public async Task AScannerSavingDoesNotLoseTheOrgsApplicationsAndReposRepoCloneWrote()
     {
         var context = await NewRunAsync(Gh(1), Gh(2), Ado(1, "Claro"), Ado(2, "Other"));
-        await new RepoCloneTool().RunAsync(context);
+        await new SnapshotOnlyRepoClone().RunAsync(context);
         var afterRepoClone = (await ReadAsync()).ToRepoOutcomes().Select(r => r.Key).Order().ToList();
 
         await new Scanner().RunAsync(context);
@@ -150,11 +150,11 @@ public class UnifiedStateTests : IDisposable
     public async Task ReposStillThereKeepTheirScanStateWhenRepoCloneListsThemAgain()
     {
         var first = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
         await new Scanner().RunAsync(first);
 
         var second = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(second);
+        await new SnapshotOnlyRepoClone().RunAsync(second);
 
         var doc = await ReadAsync();
         Assert.All(doc.ToStoredRepos(), r => Assert.Equal(2, r.Scan["Semgrep"].FindingCount));
@@ -165,17 +165,17 @@ public class UnifiedStateTests : IDisposable
     public async Task ARepoThatIsGoneLosesItsScanStateAndOneThatReturnsIsScannedAsNew()
     {
         var first = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
         await new Scanner().RunAsync(first);
 
         var second = await NewRunAsync(Gh(1));
-        await new RepoCloneTool().RunAsync(second);
+        await new SnapshotOnlyRepoClone().RunAsync(second);
         await new Scanner().RunAsync(second);
         var afterGone = await ReadAsync();
         Assert.DoesNotContain(afterGone.ToStoredRepos(), r => r.Repo.Key == "gh-002");
 
         var third = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(third);
+        await new SnapshotOnlyRepoClone().RunAsync(third);
         var scanner = new Scanner();
         await scanner.RunAsync(third);
 
@@ -186,7 +186,7 @@ public class UnifiedStateTests : IDisposable
     public async Task AnOrgWhoseListingDidNotFinishKeepsEverythingItHeldIncludingScanState()
     {
         var first = await NewRunAsync(Gh(1, org: "Broken"), Gh(2, org: "Broken"), Gh(3, org: "Fine"));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
         await new Scanner().RunAsync(first);
 
         var state = new FoundOrgAppRepoState(new FoundOrgAppRepoStore(StateFolder), "run-x");
@@ -205,13 +205,13 @@ public class UnifiedStateTests : IDisposable
     public async Task TheToolBookkeepingSurvivesRepoClonesReplacementOfTheRepos()
     {
         var first = await NewRunAsync(Gh(1));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
         await new Scanner().RunAsync(first);
         var lastFull = (await ReadAsync()).Tools["Semgrep"].LastFullScanAt;
         Assert.NotNull(lastFull);
 
         var second = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(second);
+        await new SnapshotOnlyRepoClone().RunAsync(second);
 
         Assert.Equal(lastFull, (await ReadAsync()).Tools["Semgrep"].LastFullScanAt);
     }
@@ -222,11 +222,11 @@ public class UnifiedStateTests : IDisposable
     public async Task OnTheSecondRunRepoCloneKnowsWhatIsNewAndTheScannerSkipsWhatDidNotChange()
     {
         var first = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
         await new Scanner().RunAsync(first);
 
         var second = await NewRunAsync(Gh(1), Gh(2, sha: "sha-2-changed"), Gh(3));
-        await new RepoCloneTool().RunAsync(second);
+        await new SnapshotOnlyRepoClone().RunAsync(second);
         var scanner = new Scanner();
         await scanner.RunAsync(second);
 
@@ -242,12 +242,12 @@ public class UnifiedStateTests : IDisposable
     public async Task TheSnapshotNotUpdatedAlertStillProtectsScanStateWhenDiscoveryFoundNothing()
     {
         var first = await NewRunAsync(Gh(1), Gh(2));
-        await new RepoCloneTool().RunAsync(first);
+        await new SnapshotOnlyRepoClone().RunAsync(first);
         await new Scanner().RunAsync(first);
         var before = (await ReadAsync()).ToStoredRepos().ToDictionary(r => r.Repo.Key, r => r.Scan["Semgrep"]);
 
         var second = await NewRunAsync(); // discovery found nothing
-        await new RepoCloneTool().RunAsync(second);
+        await new SnapshotOnlyRepoClone().RunAsync(second);
 
         Assert.Contains(second.Status.Snapshot().Alerts, a => a.Type == "SnapshotNotUpdated");
         Assert.Equal(before, (await ReadAsync()).ToStoredRepos().ToDictionary(r => r.Repo.Key, r => r.Scan["Semgrep"]));
@@ -271,7 +271,7 @@ public class UnifiedStateTests : IDisposable
         await File.WriteAllTextAsync(StateFile, "{ not json");
         var context = await NewRunAsync(Gh(1));
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => new RepoCloneTool().RunAsync(context));
+        await Assert.ThrowsAsync<InvalidDataException>(() => new SnapshotOnlyRepoClone().RunAsync(context));
 
         Assert.Equal("{ not json", await File.ReadAllTextAsync(StateFile));
     }

@@ -25,7 +25,11 @@ internal sealed class ApiRequester(
 
     /// <param name="createRequest">Builds the request afresh for each attempt, since a sent request cannot be sent again.</param>
     /// <param name="url">Only for messages. It must not contain a secret.</param>
-    public async Task<JsonDocument> GetJsonAsync(string url, Func<HttpRequestMessage> createRequest, CancellationToken cancellationToken)
+    public async Task<JsonDocument> GetJsonAsync(string url, Func<HttpRequestMessage> createRequest, CancellationToken cancellationToken) =>
+        (await GetAsync(url, createRequest, cancellationToken)).Json;
+
+    /// <summary>As <see cref="GetJsonAsync"/>, and the response headers too, for APIs that page through a header.</summary>
+    public async Task<ApiResponse> GetAsync(string url, Func<HttpRequestMessage> createRequest, CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < MaxAttempts; attempt++)
         {
@@ -33,10 +37,11 @@ internal sealed class ApiRequester(
             HttpStatusCode status;
             byte[] body;
             TimeSpan? retryAfter;
+            Dictionary<string, string> headers;
 
             try
             {
-                (status, body, retryAfter) = await SendAsync(createRequest, cancellationToken);
+                (status, body, retryAfter, headers) = await SendAsync(createRequest, cancellationToken);
             }
             catch (Exception ex) when (IsConnectionProblem(ex, cancellationToken))
             {
@@ -56,7 +61,7 @@ internal sealed class ApiRequester(
             {
                 try
                 {
-                    return JsonDocument.Parse(body);
+                    return new ApiResponse(JsonDocument.Parse(body), headers);
                 }
                 catch (JsonException)
                 {
@@ -78,7 +83,7 @@ internal sealed class ApiRequester(
         throw createError($"Giving up on {url} after {MaxAttempts} attempts.", null);
     }
 
-    private async Task<(HttpStatusCode Status, byte[] Body, TimeSpan? RetryAfter)> SendAsync(
+    private async Task<(HttpStatusCode Status, byte[] Body, TimeSpan? RetryAfter, Dictionary<string, string> Headers)> SendAsync(
         Func<HttpRequestMessage> createRequest,
         CancellationToken cancellationToken)
     {
@@ -88,7 +93,9 @@ internal sealed class ApiRequester(
 
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
         var body = await response.Content.ReadAsByteArrayAsync(timeout.Token);
-        return (response.StatusCode, body, ReadRetryAfter(response));
+        var headers = response.Headers.NonValidated
+            .ToDictionary(h => h.Key.ToLowerInvariant(), h => string.Join(",", h.Value), StringComparer.OrdinalIgnoreCase);
+        return (response.StatusCode, body, ReadRetryAfter(response), headers);
     }
 
     // The header can be a whole number of seconds or, as the scripts allowed, a decimal one.
@@ -117,4 +124,10 @@ internal sealed class ApiRequester(
 
     private static string Snippet(byte[] body) =>
         Encoding.UTF8.GetString(body, 0, Math.Min(body.Length, 400)).Replace('\n', ' ').Replace('\r', ' ');
+}
+
+/// <summary>A parsed JSON response and its headers (names in lower case). Dispose the document when done.</summary>
+internal sealed record ApiResponse(JsonDocument Json, IReadOnlyDictionary<string, string> Headers) : IDisposable
+{
+    public void Dispose() => Json.Dispose();
 }
