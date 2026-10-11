@@ -19,7 +19,11 @@
     "RepoClone": {
       "enabled": true,
       "maxParallel": null,
-      "timeoutMinutes": null
+      "timeoutMinutes": null,
+      "sources": {
+        "ADO": { "enabled": true },
+        "GitHub": { "enabled": true }
+      }
     }
   },
   "scope": {

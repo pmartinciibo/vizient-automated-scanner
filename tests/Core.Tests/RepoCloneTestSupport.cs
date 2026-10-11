@@ -131,17 +131,17 @@ public sealed class RepoCloneRun : IDisposable
         new(System.IO.Path.Combine(OriginsRoot, name), files.Length == 0 ? [("readme.txt", "hello")] : files);
 
     /// <summary>Starts a new run (a new run folder) over the same state and repos root.</summary>
-    public async Task<RunContext> NewRunAsync()
+    public async Task<RunContext> NewRunAsync(Func<RunRequestDocument, RunRequestDocument>? request = null)
     {
         var requestFile = System.IO.Path.Combine(Root, "requests", $"request-{Interlocked.Increment(ref _counter)}.json");
-        await AtomicJsonFile.WriteAsync(requestFile, new RunRequestDocument { RunId = $"run-{Guid.NewGuid():N}"[..12], Mode = ScanMode.Normal });
+        await AtomicJsonFile.WriteAsync(requestFile, (request ?? (r => r))(new RunRequestDocument { RunId = $"run-{Guid.NewGuid():N}"[..12], Mode = ScanMode.Normal }));
         Context = await RunContext.StartAsync(Config, requestFile);
         return Context;
     }
 
-    public async Task<RunContext> RunAsync(FakeSources sources, Action<Exception>? onError = null)
+    public async Task<RunContext> RunAsync(FakeSources sources, Func<RunRequestDocument, RunRequestDocument>? request = null)
     {
-        var context = await NewRunAsync();
+        var context = await NewRunAsync(request);
         await new RepoCloneTool(sources, (_, _) => Task.CompletedTask).RunAsync(context);
         return context;
     }

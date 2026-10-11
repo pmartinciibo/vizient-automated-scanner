@@ -435,6 +435,142 @@ public class RepoCloneTests : IDisposable
         Assert.All(sources.Requests, r => Assert.Equal(expected, r.Authorization));
     }
 
+    // ---- turning a source off for one run (request.json "sources") ----
+
+    private FakeSources BothSources(FakeOrigin gh, FakeOrigin ado) => new()
+    {
+        Respond = uri => uri.Host == "dev.azure.com" ? AdoSource(ado).Respond(uri)
+            : uri.Query.Contains("page=1") ? FakeSources.GitHubList(FakeSources.GitHubRepo(1, "one", gh.Path))
+            : FakeSources.GitHubList()
+    };
+
+    private void ConfigureBoth() =>
+        _run.With(s => s with
+        {
+            Sources = [new SourceSettings { Source = "GitHub", Org = "acme", TokenSecret = "gh-token" },
+                       new SourceSettings { Source = "ADO", Org = "vz", TokenSecret = "gh-token" }]
+        });
+
+    private static RunRequestDocument WithSources(RunRequestDocument r, Dictionary<string, SourceRequestOverride> sources) =>
+        r with { Tools = new() { ["RepoClone"] = new ToolRequestOverride { Sources = sources } } };
+
+    private static RunRequestDocument Off(RunRequestDocument r, string source) =>
+        WithSources(r, new() { [source] = new SourceRequestOverride { Enabled = false } });
+
+    [Fact]
+    public async Task ASourceIsOnUnlessTheRequestTurnsItOff()
+    {
+        var gh = _run.Origin("gh");
+        var ado = _run.Origin("svc");
+        ConfigureBoth();
+
+        var context = await _run.RunAsync(BothSources(gh, ado));
+
+        Assert.True(context.Markers.IsDone("RepoClone", "gh-1"));
+        Assert.True(context.Markers.IsDone("RepoClone", "ado-aaaa1111"));
+    }
+
+    [Fact]
+    public async Task TurningAdoOffClonesOnlyGitHubAndNeverCallsAzureDevOps()
+    {
+        var gh = _run.Origin("gh");
+        var ado = _run.Origin("svc");
+        ConfigureBoth();
+        var sources = BothSources(gh, ado);
+
+        var context = await _run.RunAsync(sources, r => Off(r, "ADO"));
+
+        Assert.True(context.Markers.IsDone("RepoClone", "gh-1"));
+        Assert.DoesNotContain(context.Repos.Snapshot(), r => r.Key.StartsWith("ado-"));
+        Assert.DoesNotContain(sources.Requests, r => r.Uri.Host == "dev.azure.com");
+        Assert.DoesNotContain(context.Status.Snapshot().Alerts, a => a.Type == "OrgDiscoveryFailed");
+        var note = Assert.Single(context.Status.Snapshot().Alerts, a => a.Type == "SourceLeftOut");
+        Assert.Contains("ADO/vz", note.Name);
+    }
+
+    [Fact]
+    public async Task TurningGitHubOffClonesOnlyAdo()
+    {
+        var gh = _run.Origin("gh");
+        var ado = _run.Origin("svc");
+        ConfigureBoth();
+        var sources = BothSources(gh, ado);
+
+        var context = await _run.RunAsync(sources, r => Off(r, "GitHub"));
+
+        Assert.True(context.Markers.IsDone("RepoClone", "ado-aaaa1111"));
+        Assert.DoesNotContain(context.Repos.Snapshot(), r => r.Key.StartsWith("gh-"));
+        Assert.DoesNotContain(sources.Requests, r => r.Uri.Host == "api.github.com");
+    }
+
+    [Fact]
+    public async Task WhatIsKnownOfASourceLeftOutIsKeptNotDroppedAndItsReposAreNotScanned()
+    {
+        var gh = _run.Origin("gh");
+        var ado = _run.Origin("svc");
+        ConfigureBoth();
+        await _run.RunAsync(BothSources(gh, ado));
+
+        var context = await _run.RunAsync(BothSources(gh, ado), r => Off(r, "ADO"));
+
+        var state = await ReadStateAsync();
+        Assert.Contains(state.ToStoredRepos(), r => r.Repo.Key == "ado-aaaa1111");
+        Assert.Contains(state.ToStoredRepos(), r => r.Repo.Key == "gh-1");
+        var left = Repo(context, "ado-aaaa1111");
+        Assert.Equal(RepositoryStatus.Unreachable, left.RemoteStatus);
+        Assert.False(left.ExistedRemotely);
+        Assert.True(left.ExistedLocally);
+        Assert.False(context.Markers.IsDone("RepoClone", "ado-aaaa1111"));
+    }
+
+    [Fact]
+    public async Task TurningEverySourceOffIsAClearErrorPointingAtTheToolSwitch()
+    {
+        var gh = _run.Origin("gh");
+        var ado = _run.Origin("svc");
+        ConfigureBoth();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _run.RunAsync(BothSources(gh, ado), r => WithSources(r, new()
+        {
+            ["ADO"] = new SourceRequestOverride { Enabled = false },
+            ["GitHub"] = new SourceRequestOverride { Enabled = false }
+        })));
+
+        Assert.Contains("turn off the RepoClone tool", error.Message);
+    }
+
+    [Fact]
+    public async Task ASourceNameTheEngineDoesNotKnowIsRejectedWhenTheRunStarts()
+    {
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => _run.NewRunAsync(r => WithSources(r, new() { ["Gitlab"] = new SourceRequestOverride { Enabled = false } })));
+
+        Assert.Contains("unknown sources: Gitlab", error.Message);
+    }
+
+    [Fact]
+    public async Task SourcesUnderAnyToolButRepoCloneAreRejectedWhenTheRunStarts()
+    {
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => _run.NewRunAsync(r => r with
+        {
+            Tools = new() { ["Snyk"] = new ToolRequestOverride { Sources = new() { ["ADO"] = new SourceRequestOverride { Enabled = false } } } }
+        }));
+
+        Assert.Contains("belongs under the RepoClone tool", error.Message);
+    }
+
+    [Fact]
+    public async Task ASourceMarkedEnabledTrueIsOnLikeOneNotMentioned()
+    {
+        var gh = _run.Origin("gh");
+        var ado = _run.Origin("svc");
+        ConfigureBoth();
+
+        var context = await _run.RunAsync(BothSources(gh, ado), r => WithSources(r, new() { ["ADO"] = new SourceRequestOverride { Enabled = true } }));
+
+        Assert.True(context.Markers.IsDone("RepoClone", "ado-aaaa1111"));
+        Assert.True(context.Markers.IsDone("RepoClone", "gh-1"));
+    }
+
     // A stand-in for the Azure CLI: lists the given tenants, and answers a token request with "tok-<tenant>".
     private static void WriteAz(string path, params string[] tenants) =>
         File.WriteAllLines(path,

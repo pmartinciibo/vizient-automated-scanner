@@ -64,7 +64,29 @@ public sealed class RepoCloneTool(
         var credentials = new Dictionary<string, IGitCredential>(StringComparer.OrdinalIgnoreCase);
         var incompleteOrgs = new List<(string Source, string Org)>();
 
-        foreach (var source in sources)
+        // A source the request turns off is not listed or cloned. What the last scan knew of its repos is kept, as for an
+        // org that could not be listed, but it is no failure and raises no alert.
+        var requested = sources.Where(s => context.Request.IsSourceEnabled(s.Source)).ToList();
+        var leftOut = sources.Except(requested).Select(s => (s.Source, s.Org.Trim())).ToList();
+        if (requested.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "request.json turns off every source RepoClone has. To skip RepoClone for this run, turn off the RepoClone tool instead.");
+        }
+
+        foreach (var (leftSource, leftOrg) in leftOut)
+        {
+            // Not a problem, but the status should say why these repos are not in this run.
+            context.Status.AddAlert(new StatusAlert
+            {
+                Type = "SourceLeftOut",
+                Tool = Name,
+                Name = $"{leftSource}/{leftOrg}: turned off by the request",
+                At = clock.GetUtcNow()
+            });
+        }
+
+        foreach (var source in requested)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var org = source.Org.Trim();
@@ -111,7 +133,7 @@ public sealed class RepoCloneTool(
 
         // Nothing could be listed at all: the sources, the tokens or the network are wrong. Fail the step and leave
         // the last snapshot exactly as it was.
-        if (incompleteOrgs.Count == sources.Count)
+        if (incompleteOrgs.Count == requested.Count)
         {
             throw new InvalidOperationException(
                 $"No organization could be listed ({string.Join(", ", incompleteOrgs.Select(o => $"{o.Source}/{o.Org}"))}). See the OrgDiscoveryFailed alerts.");
@@ -147,7 +169,8 @@ public sealed class RepoCloneTool(
         }
 
         // Repos of an org that could not be listed are shown as unreachable. They are not in scope for this run.
-        var incomplete = incompleteOrgs.Select(o => $"{o.Source}|{o.Org}").ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kept = incompleteOrgs.Concat(leftOut);
+        var incomplete = kept.Select(o => $"{o.Source}|{o.Item2}").ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var earlier in prior.Values.Where(r => !byKey.ContainsKey(r.Key) && incomplete.Contains($"{r.Source}|{r.OrgName}")))
         {
             context.Repos.Record(earlier with
@@ -184,7 +207,7 @@ public sealed class RepoCloneTool(
         finally
         {
             // Listing finished, so the snapshot is worth writing even if the run is stopped part way through.
-            await RepoSnapshotKeeper.SaveAsync(context, lastSnapshot, incompleteOrgs, clock, CancellationToken.None);
+            await RepoSnapshotKeeper.SaveAsync(context, lastSnapshot, incompleteOrgs.Concat(leftOut).ToList(), clock, CancellationToken.None);
         }
     }
 

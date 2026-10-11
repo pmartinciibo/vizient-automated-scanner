@@ -146,6 +146,26 @@ public sealed record RunContext(
         {
             throw new InvalidDataException($"request.json names unknown tools: {string.Join(", ", unknown)}.");
         }
+
+        foreach (var (tool, overrides) in request.Tools)
+        {
+            if (overrides.Sources is null)
+            {
+                continue;
+            }
+
+            if (tool != ToolNames.RepoClone)
+            {
+                throw new InvalidDataException($"request.json: \"sources\" belongs under the RepoClone tool, not {tool}.");
+            }
+
+            var unknownSources = overrides.Sources.Keys.Except([SourceSettings.Ado, SourceSettings.GitHub]).ToList();
+            if (unknownSources.Count > 0)
+            {
+                throw new InvalidDataException(
+                    $"request.json names unknown sources: {string.Join(", ", unknownSources)}. Use \"{SourceSettings.Ado}\" or \"{SourceSettings.GitHub}\".");
+            }
+        }
     }
 
     private static async Task ValidateContinuationAsync(
