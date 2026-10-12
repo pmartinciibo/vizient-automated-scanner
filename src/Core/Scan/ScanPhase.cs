@@ -78,6 +78,7 @@ public sealed class ScanPhase
         {
             var participants = await WaitForMembersAsync(context, cancellationToken);
             await context.FoundState.EnsureLoadedAsync(cancellationToken);
+            AddReposFromState(context);
 
             // A tool that cannot work fails alone and at once, with one message, before any repo is opened.
             var prepared = await Task.WhenAll(participants.Select(async scanner =>
@@ -146,6 +147,26 @@ public sealed class ScanPhase
             {
                 Complete(run.Name, null);
             }
+        }
+    }
+
+    /// <summary>
+    /// The scan does not depend on RepoClone having run. Every repo in FoundOrgAppRepo.json that this run's RepoClone did
+    /// not report (it was off, or did not cover that source or org) is added from the file, as the last run left it. The
+    /// mirror is checked on disk, so one that is not there is skipped as NoLocalClone. Nothing about it was confirmed with
+    /// its source this run, so it is not marked as existing remotely.
+    /// </summary>
+    private static void AddReposFromState(RunContext context)
+    {
+        var reported = context.Repos.Snapshot().Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
+        foreach (var repo in context.FoundState.Repos().Where(r => !reported.Contains(r.Key)))
+        {
+            context.Repos.Record(repo with
+            {
+                ExistedLocally = RepoSynchronizer.IsMirror(repo.LocalPath),
+                ExistedRemotely = false,
+                UpdatedLocally = false
+            });
         }
     }
 

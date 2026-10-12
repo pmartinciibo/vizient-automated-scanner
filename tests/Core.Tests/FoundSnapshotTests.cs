@@ -174,13 +174,16 @@ public class FoundSnapshotTests : IDisposable
     }
 
     [Fact]
-    public void ARepoThatDisappearedFromACompletedOrgIsDroppedFromTheSnapshot()
+    public void ARepoThatDisappearedFromACompletedOrgIsKeptAndMarkedDeleted()
     {
         var previous = Snapshot(Gh("gh-1"), Gh("gh-2"));
 
         var next = FoundSnapshotBuilder.Build("run-1", Now, [Gh("gh-1")], previous, incompleteOrgs: []);
 
-        Assert.Equal(["gh-1"], next.Orgs.Single().Applications.Single().Repos.Select(r => r.Key));
+        var repos = next.Orgs.Single().Applications.Single().Repos;
+        Assert.Equal(["gh-1", "gh-2"], repos.Select(r => r.Key));
+        Assert.Equal(RepositoryStatus.Active, repos[0].RemoteStatus);
+        Assert.Equal(RepositoryStatus.Deleted, repos[1].RemoteStatus);
         Assert.Equal("run-1", next.RunId);
     }
 
@@ -198,7 +201,7 @@ public class FoundSnapshotTests : IDisposable
 
         var byOrg = next.Orgs.ToDictionary(o => o.Name, o => o.Applications.Single().Repos.Select(r => r.Key).ToList());
         Assert.Equal(["gh-1", "gh-2"], byOrg["Broken"]);
-        Assert.Equal(["gh-3"], byOrg["Fine"]);
+        Assert.Equal(["gh-3", "gh-4"], byOrg["Fine"]);
     }
 
     [Fact]
@@ -211,6 +214,23 @@ public class FoundSnapshotTests : IDisposable
 
         var ado = next.Orgs.Single(o => o.Source == "ADO");
         Assert.Equal(["Claro", "Other"], ado.Applications.Select(a => a.Name));
+    }
+
+    [Fact]
+    public void ReposOfAnOrgNotListedThisScanAreKeptAsTheyWereAndOnesOfAListedOrgAreMarkedDeleted()
+    {
+        var previous = Snapshot(Gh("gh-1", org: "Other"), Gh("gh-2", org: "Listed"), Gh("gh-3", org: "Listed"), Ado("ado-1", "Claro"));
+
+        // Only GitHub/Listed was listed, and it now has just gh-2. ADO and GitHub/Other were not part of this scan.
+        var next = FoundSnapshotBuilder.Build(
+            "run-1", Now, [Gh("gh-2", org: "Listed")], previous, incompleteOrgs: [], listedOrgs: [("GitHub", "Listed")]);
+
+        var keys = next.ToStoredRepos().Select(s => s.Repo.Key).Order().ToList();
+        Assert.Equal(["ado-1", "gh-1", "gh-2", "gh-3"], keys);
+        var status = next.ToStoredRepos().ToDictionary(s => s.Repo.Key, s => s.Repo.RemoteStatus);
+        Assert.Equal(RepositoryStatus.Deleted, status["gh-3"]);
+        Assert.Equal(RepositoryStatus.Active, status["gh-1"]);
+        Assert.Equal(RepositoryStatus.Active, status["gh-2"]);
     }
 
     // ---- RepoClone loads then saves ----

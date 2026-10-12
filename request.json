@@ -17,7 +17,7 @@
       "timeoutMinutes": null
     },
     "RepoClone": {
-      "enabled": true,
+      "enabled": false,
       "maxParallel": null,
       "timeoutMinutes": null,
       "sources": {
@@ -27,7 +27,7 @@
       }
     },
     "TruffleHog": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     },

@@ -162,7 +162,7 @@ public class UnifiedStateTests : IDisposable
     }
 
     [Fact]
-    public async Task ARepoThatIsGoneLosesItsScanStateAndOneThatReturnsIsScannedAsNew()
+    public async Task ARepoThatIsGoneIsKeptAsDeletedWithItsScanStateAndComesBackActive()
     {
         var first = await NewRunAsync(Gh(1), Gh(2));
         await new SnapshotOnlyRepoClone().RunAsync(first);
@@ -171,15 +171,15 @@ public class UnifiedStateTests : IDisposable
         var second = await NewRunAsync(Gh(1));
         await new SnapshotOnlyRepoClone().RunAsync(second);
         await new Scanner().RunAsync(second);
-        var afterGone = await ReadAsync();
-        Assert.DoesNotContain(afterGone.ToStoredRepos(), r => r.Repo.Key == "gh-002");
+        var gone = (await ReadAsync()).ToStoredRepos().Single(r => r.Repo.Key == "gh-002");
+        Assert.Equal(RepositoryStatus.Deleted, gone.Repo.RemoteStatus);
+        Assert.NotEmpty(gone.Scan);
 
         var third = await NewRunAsync(Gh(1), Gh(2));
         await new SnapshotOnlyRepoClone().RunAsync(third);
-        var scanner = new Scanner();
-        await scanner.RunAsync(third);
-
-        Assert.Equal(["gh-002"], scanner.Scanned);
+        var back = (await ReadAsync()).ToStoredRepos().Single(r => r.Repo.Key == "gh-002");
+        Assert.Equal(RepositoryStatus.Active, back.Repo.RemoteStatus);
+        Assert.NotEmpty(back.Scan);
     }
 
     [Fact]

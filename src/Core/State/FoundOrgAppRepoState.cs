@@ -59,11 +59,21 @@ public sealed class FoundOrgAppRepoState(FoundOrgAppRepoStore store, string runI
     public void ReplaceSnapshot(
         IEnumerable<RepoOutcome> reposThisScan,
         IEnumerable<(string Source, string Org)> incompleteOrgs,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IEnumerable<(string Source, string Org)>? listedOrgs = null)
     {
         lock (_gate)
         {
-            Apply(FoundSnapshotBuilder.Build(runId, now, reposThisScan, ToDocument(now), incompleteOrgs));
+            Apply(FoundSnapshotBuilder.Build(runId, now, reposThisScan, ToDocument(now), incompleteOrgs, listedOrgs));
+        }
+    }
+
+    /// <summary>Every repo the state holds, as the last run left it (plus any a scanner has added).</summary>
+    public IReadOnlyList<RepoOutcome> Repos()
+    {
+        lock (_gate)
+        {
+            return _repos.Values.Select(s => s.Repo).OrderBy(r => r.Key, StringComparer.Ordinal).ToList();
         }
     }
 

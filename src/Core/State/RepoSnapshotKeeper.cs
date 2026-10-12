@@ -28,7 +28,8 @@ public static class RepoSnapshotKeeper
         FoundOrgAppRepoDocument lastSnapshot,
         IReadOnlyList<(string Source, string Org)> incompleteOrgs,
         TimeProvider clock,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<(string Source, string Org)>? listedOrgs = null)
     {
         var found = context.Repos.Snapshot();
 
@@ -44,7 +45,7 @@ public static class RepoSnapshotKeeper
             return;
         }
 
-        context.FoundState.ReplaceSnapshot(found, incompleteOrgs, clock.GetUtcNow());
+        context.FoundState.ReplaceSnapshot(found, incompleteOrgs, clock.GetUtcNow(), listedOrgs);
         await context.FoundState.SaveAsync(cancellationToken);
     }
 }

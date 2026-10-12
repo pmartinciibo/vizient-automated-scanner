@@ -81,7 +81,7 @@ public sealed class RepoCloneTool(
         var failures = new List<string>();
         var stateOfOrg = new Dictionary<string, SourceState>(StringComparer.OrdinalIgnoreCase);
         var listedGitHubOrgs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var listedOrgs = 0;
+        var listedOrgs = new List<(string Source, string Org)>();
 
         // The GitHub orgs the last scan knew, for keeping them when this scan cannot say what the token can see.
         List<string> KnownGitHubOrgs() => prior.Values
@@ -264,7 +264,7 @@ public sealed class RepoCloneTool(
                             : await gitHub.ListAsync(org, auth, cancellationToken);
                         credentials[RepoSynchronizer.CredentialKey(SourceSettings.GitHub, org)] = credential;
                         discovered.AddRange(listed);
-                        listedOrgs++;
+                        listedOrgs.Add((SourceSettings.GitHub, org));
                         orgsFinished++;
                         reposFound += listed.Count;
                         context.Repos.SetOrgStatus(SourceSettings.GitHub, org, $"{listed.Count} repos found");
@@ -300,7 +300,7 @@ public sealed class RepoCloneTool(
                     var listed = await ado.ListAsync(adoOrg, await credential.GetAsync(cancellationToken), cancellationToken);
                     credentials[RepoSynchronizer.CredentialKey(source.Source, adoOrg)] = credential;
                     discovered.AddRange(listed);
-                    listedOrgs++;
+                    listedOrgs.Add((source.Source, adoOrg));
                     orgsFinished++;
                     reposFound += listed.Count;
                     context.Repos.SetOrgStatus(source.Source, adoOrg, $"{listed.Count} repos found");
@@ -334,7 +334,7 @@ public sealed class RepoCloneTool(
 
         // Nothing could be listed at all: the sources, the tokens or the network are wrong. Fail the step and leave
         // the last snapshot exactly as it was.
-        if (listedOrgs == 0)
+        if (listedOrgs.Count == 0)
         {
             var offByRequest = leftOut.Count > 0
                 ? $" Turned off by the request: {string.Join(", ", leftOut.Select(o => o.Org.Length > 0 ? $"{o.Source}/{o.Org}" : o.Source).Distinct())}."
@@ -434,7 +434,7 @@ public sealed class RepoCloneTool(
         finally
         {
             // Listing finished, so the snapshot is worth writing even if the run is stopped part way through.
-            await RepoSnapshotKeeper.SaveAsync(context, lastSnapshot, incompleteOrgs.Concat(leftOut).ToList(), clock, CancellationToken.None);
+            await RepoSnapshotKeeper.SaveAsync(context, lastSnapshot, incompleteOrgs.Concat(leftOut).ToList(), clock, CancellationToken.None, listedOrgs);
         }
     }
 
