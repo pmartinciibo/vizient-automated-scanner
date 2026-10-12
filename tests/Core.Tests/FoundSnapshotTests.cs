@@ -234,6 +234,17 @@ public class FoundSnapshotTests : IDisposable
         Assert.Equal(RepositoryStatus.Active, status["gh-2"]);
     }
 
+    [Fact]
+    public async Task AMaxReposBelowOneIsRejectedWhenTheRunStarts()
+    {
+        var requestFile = Path.Combine(_root, "requests", "run-1.json");
+        await AtomicJsonFile.WriteAsync(requestFile, new RunRequestDocument { RunId = "run-1", Scan = new RequestScan { MaxRepos = 0 } });
+
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => RunContext.StartAsync(_config, requestFile));
+
+        Assert.Contains("scan.maxRepos", error.Message);
+    }
+
     // ---- copies in the runs folder ----
 
     private static string RunsRoot(string root) => Path.Combine(root, "runs");

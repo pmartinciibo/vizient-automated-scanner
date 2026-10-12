@@ -141,6 +141,11 @@ public sealed record RunContext(
                 $"request.json runId '{request.RunId}' is missing or has characters not allowed in a folder name.");
         }
 
+        if (request.Scan.MaxRepos is < 1)
+        {
+            throw new InvalidDataException($"request.json scan.maxRepos is {request.Scan.MaxRepos}. Give a number of 1 or more, or leave it empty to scan every repo.");
+        }
+
         var unknown = request.Tools.Keys.Except(ToolNames.All).ToList();
         if (unknown.Count > 0)
         {

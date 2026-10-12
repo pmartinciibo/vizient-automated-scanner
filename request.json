@@ -52,6 +52,9 @@
       "timeoutMinutes": null
     }
   },
+  "scan": {
+    "maxRepos": null
+  },
   "scope": {
     "includeRepos": [],
     "excludeRepos": []

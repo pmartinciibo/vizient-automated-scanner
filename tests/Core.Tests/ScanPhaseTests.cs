@@ -306,6 +306,54 @@ public class ScanPhaseTests : IDisposable
         Assert.Equal(4, tool.Calls.Count);
     }
 
+    private async Task<ScanResult[]> ScanWithMaxReposAsync(int? maxRepos, ScanToolBase tool)
+    {
+        var limited = _world.Context with { Request = _world.Context.Request with { Scan = new RequestScan { MaxRepos = maxRepos } } };
+        var phase = new ScanPhase([tool], TimeSpan.FromMilliseconds(10), TimeSpan.FromSeconds(2));
+        foreach (var member in phase.Tools)
+        {
+            await member.RunAsync(limited);
+        }
+
+        return [];
+    }
+
+    [Fact]
+    public async Task TheScanStopsAfterMaxReposAndLeavesTheRestUntouched()
+    {
+        await WorldWithReposAsync(4);
+        var tool = Trufflehog();
+
+        await ScanWithMaxReposAsync(2, tool);
+
+        Assert.Equal(["gh-1", "gh-2"], tool.Repos);
+        Assert.Equal(2, _world.Step("TruffleHog").Total);
+        Assert.Equal(0, _world.Step("TruffleHog").Skipped);
+    }
+
+    [Fact]
+    public async Task AnEmptyMaxReposScansEveryRepo()
+    {
+        await WorldWithReposAsync(3);
+        var tool = Trufflehog();
+
+        await ScanWithMaxReposAsync(null, tool);
+
+        Assert.Equal(["gh-1", "gh-2", "gh-3"], tool.Repos);
+    }
+
+    [Fact]
+    public async Task ARepoThatIsSkippedDoesNotUseUpAPlaceUnderMaxRepos()
+    {
+        await WorldWithReposAsync(4);
+        _world.Context.Request.Scope.ExcludeRepos.Add("gh-1");
+        var tool = Trufflehog();
+
+        await ScanWithMaxReposAsync(2, tool);
+
+        Assert.Equal(["gh-2", "gh-3"], tool.Repos);
+    }
+
     [Fact]
     public async Task ASkipRepoCommandSkipsThatRepoForEveryTool()
     {

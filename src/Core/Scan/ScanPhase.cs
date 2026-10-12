@@ -239,8 +239,16 @@ public sealed class ScanPhase
         var planningNote = System.Diagnostics.Stopwatch.StartNew();
         progress.Planning(0, ordered.Count, 0);
         var seen = 0;
+        var counted = 0;
+        var limit = context.Request.Scan.MaxRepos;
         foreach (var repo in ordered)
         {
+            // The limit counts repos that get scanned. The rest are not looked at, and no marker is written for them.
+            if (limit is { } max && counted >= max)
+            {
+                break;
+            }
+
             if (planningNote.ElapsedMilliseconds >= 1000)
             {
                 planningNote.Restart();
@@ -260,6 +268,12 @@ public sealed class ScanPhase
             if (item.Tools.Count > 0)
             {
                 pending.Enqueue(item);
+                counted++;
+            }
+            else if (context.Request.Mode == ScanMode.Resume && runs.Any(r => context.Markers.IsDone(r.Name, repo.Key)))
+            {
+                // Scanned in the attempt this one continues, so it has used up a place under the limit.
+                counted++;
             }
         }
 
@@ -268,7 +282,7 @@ public sealed class ScanPhase
             run.Publish();
         }
 
-        progress.Planned(pending.Count, ordered.Count - pending.Count);
+        progress.Planned(pending.Count, seen - pending.Count, limit is { } cap && seen < ordered.Count ? cap : null);
 
         var maxRepos = Math.Max(1, context.Config.Current.Scan.MaxParallelRepos ?? runs.Max(r => r.Limits.MaxParallel));
         var expander = new RepoExpander(context);
@@ -499,11 +513,13 @@ public sealed class ScanPhase
             context.Status.UpdateScanning(_ => new ScanProgress(true, 0, 0, 0, 0, 0,
                 $"planning: {seen} of {of} repos checked, {needScanning} need scanning so far"));
 
-        public void Planned(int total, int skipped)
+        private int? _limit;
+
+        public void Planned(int total, int skipped, int? limit = null)
         {
             lock (_gate)
             {
-                (_total, _skipped) = (total, skipped);
+                (_total, _skipped, _limit) = (total, skipped, limit);
             }
 
             Publish(planned: true);
@@ -554,7 +570,7 @@ public sealed class ScanPhase
                     ?? (_running.Count > 0
                         ? RepoProgress.Text(done, failed, _skipped, _total, _running)
                         : planned
-                            ? $"{_total} repos need scanning, {_skipped} do not"
+                            ? $"{_total} repos need scanning, {_skipped} do not" + (_limit is { } cap ? $" (limited to {cap} by request.json scan.maxRepos)" : string.Empty)
                             : $"{_finished.Count} of {_total} repos processed" + (failed > 0 ? $", {failed} failed" : string.Empty) + (_skipped > 0 ? $", {_skipped} skipped" : string.Empty));
 
                 next = new ScanProgress(true, _total, done, failed, _skipped, _running.Count, message);

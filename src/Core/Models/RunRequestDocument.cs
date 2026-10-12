@@ -26,6 +26,9 @@ public sealed record RunRequestDocument
 
     private const string RepoCloneKey = "RepoClone";
     public RequestScope Scope { get; init; } = new();
+
+    /// <summary>Limits for the scan step (the five scanners together). Not for RepoClone or the imports.</summary>
+    public RequestScan Scan { get; init; } = new();
     public SkipOverrides Skip { get; init; } = new();
 }
 
@@ -76,6 +79,15 @@ public sealed record RequestScope
 {
     public List<string> IncludeRepos { get; init; } = new();
     public List<string> ExcludeRepos { get; init; } = new();
+}
+
+public sealed record RequestScan
+{
+    /// <summary>
+    /// The most repos the scan step will scan this run. Empty (null) means all of them. It counts repos that get scanned,
+    /// after exclusions and the skip policy, taken in repo key order, so one that is skipped does not use up the limit.
+    /// </summary>
+    public int? MaxRepos { get; init; }
 }
 
 public sealed record SkipOverrides
