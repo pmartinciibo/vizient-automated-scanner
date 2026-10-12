@@ -71,7 +71,7 @@ public sealed class StatusWriter(string statusFile, RunStatusTracker tracker, Ti
             {
                 try
                 {
-                    await AtomicJsonFile.WriteAsync(statusFile, tracker.Snapshot(), cancellationToken);
+                    await AtomicJsonFile.WriteAsync(statusFile, tracker.PublishedSnapshot(), cancellationToken);
                     return;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < attempts)

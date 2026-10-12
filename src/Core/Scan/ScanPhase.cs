@@ -1,5 +1,6 @@
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.RepoClone;
+using Vizient.AutomatedScanner.Core.Status;
 using Vizient.AutomatedScanner.Core.Tools;
 using Vizient.AutomatedScanner.Core.Work;
 
@@ -183,10 +184,24 @@ public sealed class ScanPhase
         var control = context.Control;
         var repos = context.Repos.Snapshot();
 
-        // 1. What each tool will do with each repo, decided before any repo is opened.
+        var progress = new ScanReporter(context, runs);
+
+        // 1. What each tool will do with each repo, decided before any repo is opened. So the status can say, before the
+        // first scan starts, how many repos need one.
         var pending = new Queue<RepoItem>();
-        foreach (var repo in repos.OrderBy(r => r.Key, StringComparer.Ordinal))
+        var ordered = repos.OrderBy(r => r.Key, StringComparer.Ordinal).ToList();
+        var planningNote = System.Diagnostics.Stopwatch.StartNew();
+        progress.Planning(0, ordered.Count, 0);
+        var seen = 0;
+        foreach (var repo in ordered)
         {
+            if (planningNote.ElapsedMilliseconds >= 1000)
+            {
+                planningNote.Restart();
+                progress.Planning(seen, ordered.Count, pending.Count);
+            }
+
+            seen++;
             var item = new RepoItem(repo, []);
             foreach (var run in runs)
             {
@@ -206,6 +221,8 @@ public sealed class ScanPhase
         {
             run.Publish();
         }
+
+        progress.Planned(pending.Count, ordered.Count - pending.Count);
 
         var maxRepos = Math.Max(1, context.Config.Current.Scan.MaxParallelRepos ?? runs.Max(r => r.Limits.MaxParallel));
         var expander = new RepoExpander(context);
@@ -266,7 +283,7 @@ public sealed class ScanPhase
                         continue;
                     }
 
-                    inFlight.Add(RunRepoAsync(context, expander, pending.Dequeue(), token));
+                    inFlight.Add(RunRepoAsync(context, expander, pending.Dequeue(), progress, token));
                     continue;
                 }
 
@@ -294,6 +311,8 @@ public sealed class ScanPhase
             run.Finish(notStarted, stopping);
             run.Tool.CompleteFullPassIfDone(context, run.Done, run.Failed, notStarted, stopping, run.Plan.Eligible.Count);
         }
+
+        progress.Completed(stopping, pending.Select(i => i.Repo.Key).Distinct().Count());
     }
 
     // Mirrors the planning of RepoWorkLoop for one tool and one repo: true if the tool has work to do on it.
@@ -333,7 +352,7 @@ public sealed class ScanPhase
         return true;
     }
 
-    private async Task RunRepoAsync(RunContext context, RepoExpander expander, RepoItem item, CancellationToken token)
+    private async Task RunRepoAsync(RunContext context, RepoExpander expander, RepoItem item, ScanReporter progress, CancellationToken token)
     {
         var repo = item.Repo;
         var live = item.Tools.Where(t => !t.Disabled).ToList();
@@ -358,6 +377,7 @@ public sealed class ScanPhase
             return;
         }
 
+        progress.Started(repo);
         ExpandedRepo? expanded = null;
         string? expandError = null;
         if (live.Any(t => t.Tool.UsesWorkingCopy(context)))
@@ -383,6 +403,8 @@ public sealed class ScanPhase
             {
                 await expanded.DisposeAsync();
             }
+
+            progress.Finished(repo);
         }
     }
 
@@ -416,6 +438,85 @@ public sealed class ScanPhase
     }
 
     private sealed record RepoItem(RepoOutcome Repo, List<ToolRun> Tools);
+
+    // The scan phase in repos: how many need scanning, how many are done, which are being worked on. This is the one
+    // "Scanning" step in status.json.
+    private sealed class ScanReporter(RunContext context, List<ToolRun> runs)
+    {
+        private readonly object _gate = new();
+        private readonly HashSet<string> _finished = new(StringComparer.Ordinal);
+        private readonly List<string> _running = new();
+        private int _total;
+        private int _skipped;
+
+        public void Planning(int seen, int of, int needScanning) =>
+            context.Status.UpdateScanning(_ => new ScanProgress(true, 0, 0, 0, 0, 0,
+                $"planning: {seen} of {of} repos checked, {needScanning} need scanning so far"));
+
+        public void Planned(int total, int skipped)
+        {
+            lock (_gate)
+            {
+                (_total, _skipped) = (total, skipped);
+            }
+
+            Publish(planned: true);
+        }
+
+        public void Started(RepoOutcome repo)
+        {
+            lock (_gate)
+            {
+                _running.Add(RepoProgress.Label(repo));
+            }
+
+            Publish();
+        }
+
+        public void Finished(RepoOutcome repo)
+        {
+            lock (_gate)
+            {
+                _running.Remove(RepoProgress.Label(repo));
+                _finished.Add(repo.Key);
+            }
+
+            Publish();
+        }
+
+        public void Completed(bool stopping, int notStarted)
+        {
+            lock (_gate)
+            {
+                _running.Clear();
+            }
+
+            Publish(final: stopping ? $"stopped; {notStarted} repos not started" : null);
+        }
+
+        private void Publish(bool planned = false, string? final = null)
+        {
+            ScanProgress next;
+            lock (_gate)
+            {
+                // A repo is failed while any tool has a failure for it, so a retry that succeeds takes it off the count.
+                var failedKeys = runs.SelectMany(r => r.FailedKeys()).ToHashSet(StringComparer.Ordinal);
+                var failed = _finished.Count(failedKeys.Contains);
+                var done = _finished.Count - failed;
+
+                var message = final
+                    ?? (_running.Count > 0
+                        ? RepoProgress.Text(done, failed, _skipped, _total, _running)
+                        : planned
+                            ? $"{_total} repos need scanning, {_skipped} do not"
+                            : $"{_finished.Count} of {_total} repos processed" + (failed > 0 ? $", {failed} failed" : string.Empty) + (_skipped > 0 ? $", {_skipped} skipped" : string.Empty));
+
+                next = new ScanProgress(true, _total, done, failed, _skipped, _running.Count, message);
+            }
+
+            context.Status.UpdateScanning(_ => next);
+        }
+    }
 
     // ---- one tool's counts and limits ----
 
@@ -462,6 +563,15 @@ public sealed class ScanPhase
         public int Done { get { lock (_gate) { return _done; } } }
         public int Failed { get { lock (_gate) { return _failed; } } }
         public int NotStarted { get { lock (_gate) { return _notStarted; } } }
+
+        /// <summary>The repos this tool has failed on, as things stand: a retry that succeeds takes a repo off.</summary>
+        public IReadOnlyCollection<string> FailedKeys()
+        {
+            lock (_gate)
+            {
+                return _failedKeys.ToList();
+            }
+        }
 
         public void AddRunnable(RepoOutcome repo)
         {

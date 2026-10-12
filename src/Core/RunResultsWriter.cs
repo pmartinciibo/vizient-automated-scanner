@@ -18,7 +18,7 @@ public static class RunResultsWriter
         string? error,
         CancellationToken cancellationToken = default)
     {
-        var status = context.Status.Snapshot();
+        var status = context.Status.PublishedSnapshot();
         var repos = context.Repos.Snapshot();
         var results = new ResultsDocument
         {

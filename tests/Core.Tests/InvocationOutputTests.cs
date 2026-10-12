@@ -66,7 +66,8 @@ public class InvocationOutputTests : IDisposable
         Assert.Equal(RunId, results.RunId);
         Assert.Equal(RunState.Completed, results.State);
         Assert.Equal(0, results.ExitCode);
-        Assert.Equal(8, results.Tools.Count);
+        // The five scanners are one "Scanning" entry, as in status.json.
+        Assert.Equal(["Rapid7", "CheckMarx", "RepoClone", "Scanning"], results.Tools.Select(t => t.Name));
         Assert.Equal(ToolRunState.Completed, results.Tools.Single(t => t.Name == "Rapid7").Status);
     }
 

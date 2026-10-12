@@ -26,6 +26,7 @@ public sealed class RunStatusTracker
     private RunState _state = RunState.Starting;
     private RunPhase _phase = RunPhase.Preflight;
     private DateTimeOffset? _endedAt;
+    private ScanProgress _scan = ScanProgress.None;
 
     private RunStatusTracker(
         RunRequestDocument request,
@@ -227,6 +228,94 @@ public sealed class RunStatusTracker
 
             _steps[tool] = update(step);
         }
+    }
+
+    /// <summary>The scan phase reports how many repos it has to scan and how far it has got.</summary>
+    public void UpdateScanning(Func<ScanProgress, ScanProgress> update)
+    {
+        lock (_gate)
+        {
+            _scan = update(_scan);
+        }
+    }
+
+    /// <summary>
+    /// What status.json and results.json show: the same as <see cref="Snapshot"/>, except that the five scanners are one
+    /// step, "Scanning", counted in repos. The tools keep their own steps inside, which the orchestrator and the tests use.
+    /// </summary>
+    public StatusDocument PublishedSnapshot()
+    {
+        ScanProgress scan;
+        lock (_gate)
+        {
+            scan = _scan;
+        }
+
+        var full = Snapshot();
+        var scanners = full.Steps.Where(s => ToolNames.Scanners.Contains(s.Name)).ToList();
+        var steps = full.Steps.Where(s => !ToolNames.Scanners.Contains(s.Name)).Append(Aggregate(scanners, scan)).ToList();
+        var finished = steps.Count(IsFinished);
+
+        return full with
+        {
+            Steps = steps,
+            Overall = new ProgressSummary
+            {
+                StepsCompleted = finished,
+                StepsTotal = steps.Count,
+                Percent = finished * 100 / steps.Count
+            }
+        };
+    }
+
+    private static ToolProgress Aggregate(List<ToolProgress> tools, ScanProgress scan)
+    {
+        var live = tools.Where(t => t.Status != ToolRunState.Disabled).ToList();
+        var disabled = tools.Where(t => t.Status == ToolRunState.Disabled).ToList();
+
+        var status = live.Count == 0 ? ToolRunState.Disabled
+            : live.Any(t => t.Status == ToolRunState.Running) ? ToolRunState.Running
+            : live.All(t => t.Status == ToolRunState.Pending) ? ToolRunState.Pending
+            : live.All(t => t.Status == ToolRunState.Failed) ? ToolRunState.Failed
+            : live.Any(t => t.Status is ToolRunState.Failed or ToolRunState.CompletedWithFlags) || scan.Failed > 0 ? ToolRunState.CompletedWithFlags
+            : ToolRunState.Completed;
+
+        // Counted in repos once the scan phase reports. Until then, and when the tools are run on their own, add up the tools.
+        var counted = scan.Active
+            ? (scan.Total, scan.Done, scan.Failed, scan.Skipped, scan.Running)
+            : (tools.Sum(t => t.Total), tools.Sum(t => t.Done), tools.Sum(t => t.Failed), tools.Sum(t => t.Skipped), tools.Sum(t => t.Running));
+
+        var notes = new List<string>();
+        if (status == ToolRunState.Disabled)
+        {
+            notes.AddRange(disabled.Select(t => t.Message).Where(m => !string.IsNullOrWhiteSpace(m)).Cast<string>().Distinct());
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(scan.Message))
+            {
+                notes.Add(scan.Message);
+            }
+
+            notes.AddRange(live.Where(t => t.Status == ToolRunState.Failed && !string.IsNullOrWhiteSpace(t.Message)).Select(t => $"{t.Name} failed: {t.Message}"));
+            if (disabled.Count > 0)
+            {
+                notes.Add($"not running: {string.Join(", ", disabled.Select(t => t.Name))}");
+            }
+        }
+
+        return new ToolProgress
+        {
+            Name = ToolNames.Scanning,
+            Status = status,
+            Total = counted.Item1,
+            Done = counted.Item2,
+            Failed = counted.Item3,
+            Skipped = counted.Item4,
+            Running = counted.Item5,
+            Canaries = tools.Sum(t => t.Canaries),
+            Message = notes.Count == 0 ? null : string.Join(" | ", notes)
+        };
     }
 
     public StatusDocument Snapshot()

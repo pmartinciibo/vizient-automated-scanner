@@ -1,19 +1,19 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-11T21-25-14Z",
+  "runId": "2026-10-12T02-04-41Z",
   "revision": 1,
   "attempt": 1,
-  "state": "Completed",
+  "state": "Stopped",
   "paused": false,
-  "pid": 30928,
+  "pid": 25636,
   "mode": "Normal",
-  "startedAt": "2026-10-11T21:25:14.2192139+00:00",
-  "updatedAt": "2026-10-11T21:25:53.4781536+00:00",
-  "endedAt": "2026-10-11T21:25:53.4764277+00:00",
-  "phase": "Finalize",
+  "startedAt": "2026-10-12T02:04:41.1387279+00:00",
+  "updatedAt": "2026-10-12T02:19:20.5775686+00:00",
+  "endedAt": "2026-10-12T02:19:20.5758512+00:00",
+  "phase": "Import\u002BClone",
   "overall": {
-    "percent": 100,
-    "stepsCompleted": 8,
+    "percent": 87,
+    "stepsCompleted": 7,
     "stepsTotal": 8
   },
   "steps": [
@@ -41,11 +41,11 @@
     },
     {
       "name": "RepoClone",
-      "status": "Completed",
-      "done": 0,
-      "total": 0,
+      "status": "Running",
+      "done": 532,
+      "total": 3050,
       "failed": 0,
-      "skipped": 4481,
+      "skipped": 1431,
       "canaries": 0,
       "running": 0,
       "message": null
@@ -109,36 +109,6 @@
   "effective": {},
   "alerts": [
     {
-      "type": "SourceListOnly",
-      "tool": "RepoClone",
-      "repo": null,
-      "name": "ADO VizientInc (vizientinc, RnD-Vizient): listed only by the request, nothing cloned or updated",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T21:25:14.4824591+00:00"
-    },
-    {
-      "type": "SourceListOnly",
-      "tool": "RepoClone",
-      "repo": null,
-      "name": "ADO ClaroHealthCareADO (clarohealthcare): listed only by the request, nothing cloned or updated",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T21:25:14.4832166+00:00"
-    },
-    {
-      "type": "SourceListOnly",
-      "tool": "RepoClone",
-      "repo": null,
-      "name": "GitHub GitHubRepos (preftech, aptitudemarketplace, safeandreliable): listed only by the request, nothing cloned or updated",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-11T21:25:14.4832278+00:00"
-    },
-    {
       "type": "OrgDiscoveryFailed",
       "tool": "RepoClone",
       "repo": null,
@@ -146,7 +116,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T21:25:30.4555821+00:00"
+      "at": "2026-10-12T02:04:58.9725332+00:00"
     },
     {
       "type": "OrgNotListed",
@@ -156,7 +126,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-11T21:25:34.122056+00:00"
+      "at": "2026-10-12T02:06:06.6072656+00:00"
     }
   ],
   "lastCommandSeq": 0,
