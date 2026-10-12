@@ -72,6 +72,10 @@ public class RepoListTests : IDisposable
         return JsonDocument.Parse(await File.ReadAllTextAsync(context.Invocation.Results));
     }
 
+    // The org, application and repo lists are in the RepoClone step's file, not in results.json.
+    private static async Task<JsonDocument> ReadRepoCloneResultAsync(RunContext context) =>
+        JsonDocument.Parse(await File.ReadAllTextAsync(context.Paths.ToolResult("RepoClone")));
+
     // ---- repo flags ----
 
     [Theory]
@@ -219,9 +223,11 @@ public class RepoListTests : IDisposable
         context.Repos.Record(Repo("ado-2", local: false, status: RepositoryStatus.Archived, source: "ADO", org: "vizientinc", project: "Claro"));
 
         using var json = await WriteResultsAsync(context);
+        using var cloneJson = await ReadRepoCloneResultAsync(context);
 
         Assert.False(json.RootElement.TryGetProperty("repos", out _));
-        var orgs = json.RootElement.GetProperty("orgs");
+        Assert.False(json.RootElement.TryGetProperty("orgs", out _));
+        var orgs = cloneJson.RootElement.GetProperty("orgs");
         Assert.Equal(2, orgs.GetArrayLength());
 
         var ado = orgs[0];
@@ -245,8 +251,9 @@ public class RepoListTests : IDisposable
         context.Repos.Record(Repo("gh-1", local: false, remote: true, updated: true, status: RepositoryStatus.Archived));
 
         using var json = await WriteResultsAsync(context);
+        using var cloneJson = await ReadRepoCloneResultAsync(context);
 
-        var org = json.RootElement.GetProperty("orgs")[0];
+        var org = cloneJson.RootElement.GetProperty("orgs")[0];
         var app = org.GetProperty("applications")[0];
         var repo = app.GetProperty("repos")[0];
 
@@ -295,9 +302,9 @@ public class RepoListTests : IDisposable
         context.Repos.Record(AdoRepo("ado-1", "Claro"));
         (await WriteResultsAsync(context)).Dispose();
 
-        var results = await AtomicJsonFile.ReadAsync<ResultsDocument>(context.Invocation.Results);
+        var results = await AtomicJsonFile.ReadAsync<ToolResultDocument>(context.Paths.ToolResult("RepoClone"));
 
-        var org = Assert.Single(results.Orgs);
+        var org = Assert.Single(results.Orgs!);
         Assert.Equal("Claro", Assert.Single(org.Applications).Name);
         Assert.Equal("ado-1", org.Applications[0].Repos.Single().Key);
     }
@@ -308,8 +315,9 @@ public class RepoListTests : IDisposable
         var context = await StartRunAsync();
 
         using var json = await WriteResultsAsync(context);
+        using var cloneJson = await ReadRepoCloneResultAsync(context);
 
-        Assert.Equal(0, json.RootElement.GetProperty("orgs").GetArrayLength());
+        Assert.Equal(0, cloneJson.RootElement.GetProperty("orgs").GetArrayLength());
         Assert.Equal(0, json.RootElement.GetProperty("repoTotals").GetProperty("total").GetInt32());
     }
 }

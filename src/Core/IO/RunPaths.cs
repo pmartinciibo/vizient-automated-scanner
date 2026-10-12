@@ -18,6 +18,9 @@ public sealed record RunPaths(string RunFolder)
 
     public string ResultsDir(string tool) => Path.Combine(Results, tool);
 
+    /// <summary>results\&lt;tool&gt;.json: the detail of one step, written when the run ends. Beside the tool's own folder.</summary>
+    public string ToolResult(string tool) => Path.Combine(Results, tool + ".json");
+
     // Per-entity result files, results\<tool>\<key>.*  (key is a repo key, r7-<id> or cx-<id>)
     public string ResultFile(string tool, string key) => Entity(tool, key, ".json");
     public string DoneMarker(string tool, string key) => Entity(tool, key, ".done.json");

@@ -402,7 +402,7 @@ public class FoundSnapshotTests : IDisposable
 
         await RunResultsWriter.WriteFinalAsync(context, RunState.Completed, 0, null);
 
-        using var json = JsonDocument.Parse(await File.ReadAllTextAsync(context.Invocation.Results));
+        using var json = JsonDocument.Parse(await File.ReadAllTextAsync(context.Paths.ToolResult("RepoClone")));
         var org = json.RootElement.GetProperty("orgs")[0];
         var app = org.GetProperty("applications")[0];
         Assert.True(org.GetProperty("existedPriorToScan").GetBoolean());

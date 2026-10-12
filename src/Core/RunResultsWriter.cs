@@ -1,10 +1,11 @@
 using Vizient.AutomatedScanner.Core.IO;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Serialization;
+using Vizient.AutomatedScanner.Core.Tools;
 
 namespace Vizient.AutomatedScanner.Core;
 
-/// <summary>Writes results.json beside the request and keeps a snapshot of the final files in the run folder.</summary>
+/// <summary>Writes results.json (the summary) beside the request, one results<Tool>.json per step, and keeps a snapshot of the final files in the run folder.</summary>
 public static class RunResultsWriter
 {
     /// <summary>
@@ -20,6 +21,11 @@ public static class RunResultsWriter
     {
         var status = context.Status.PublishedSnapshot();
         var repos = context.Repos.Snapshot();
+
+        // The eight steps individually (the published status folds the scanners into one), each with its own file.
+        var steps = context.Status.Snapshot().Steps;
+        await ToolResultsWriter.WriteAllAsync(context, steps, cancellationToken);
+
         var results = new ResultsDocument
         {
             RunId = context.Request.RunId,
@@ -30,11 +36,9 @@ public static class RunResultsWriter
             StartedAt = status.StartedAt,
             EndedAt = status.EndedAt ?? DateTimeOffset.UtcNow,
             Error = error,
-            Tools = status.Steps
-                .Select(s => new ToolOutcome { Name = s.Name, Status = s.Status, Message = s.Message })
-                .ToList(),
-            RepoTotals = RepoSummary.From(repos),
-            Orgs = [.. context.Repos.Orgs()]
+            Tools = steps.Select(s => ToolOutcome.From(s, ToolResultsWriter.RelativePath(s.Name))).ToList(),
+            Scanning = status.Steps.Where(s => s.Name == ToolNames.Scanning).Select(s => ToolOutcome.From(s)).FirstOrDefault(),
+            RepoTotals = RepoSummary.From(repos)
         };
 
         await AtomicJsonFile.WriteAsync(context.Invocation.Results, results, cancellationToken);

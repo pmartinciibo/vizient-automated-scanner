@@ -5,6 +5,7 @@ using Vizient.AutomatedScanner.Core.Configuration;
 using Vizient.AutomatedScanner.Core.IO;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Serialization;
+using Vizient.AutomatedScanner.Core.Tools;
 
 public class InvocationOutputTests : IDisposable
 {
@@ -66,9 +67,14 @@ public class InvocationOutputTests : IDisposable
         Assert.Equal(RunId, results.RunId);
         Assert.Equal(RunState.Completed, results.State);
         Assert.Equal(0, results.ExitCode);
-        // The five scanners are one "Scanning" entry, as in status.json.
-        Assert.Equal(["Rapid7", "CheckMarx", "RepoClone", "Scanning"], results.Tools.Select(t => t.Name));
+        // Every step has its own entry and its own file; the scanners together are also summed as "Scanning".
+        Assert.Equal(ToolNames.All, results.Tools.Select(t => t.Name));
         Assert.Equal(ToolRunState.Completed, results.Tools.Single(t => t.Name == "Rapid7").Status);
+        Assert.Equal("Scanning", results.Scanning?.Name);
+        foreach (var tool in ToolNames.All)
+        {
+            Assert.True(File.Exists(Path.Combine(context.Paths.RunFolder, "results", tool + ".json")), tool);
+        }
     }
 
     [Fact]
