@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Status;
 
 namespace Vizient.AutomatedScanner.Engine;
@@ -97,10 +98,21 @@ public sealed class ConsoleStatusDisplay
         }
 
         // A line that wraps would take two rows and the cursor would climb the wrong distance.
-        return _tracker.PublishedSnapshot().Steps
-            .Select(s => $"{s.Name,-10} {s.PercentComplete}% ({s.ElapsedTime}/{s.EstimatedRemainingTime}): {s.Message}".TrimEnd())
-            .Select(line => line.Length > width ? line[..width] : line)
-            .ToList();
+        var lines = new List<string>();
+        foreach (var s in _tracker.PublishedSnapshot().Steps)
+        {
+            lines.Add($"{s.Name,-10} {s.PercentComplete}% ({s.ElapsedTime}/{s.EstimatedRemainingTime}): {s.Message}".TrimEnd());
+
+            // Under "Scanning": each scanner that is on, indented, with what it has found so far.
+            foreach (var scanner in s.Scanners?.Where(t => t.Status != ToolRunState.Disabled) ?? [])
+            {
+                var c = scanner.Severities;
+                lines.Add($"  {scanner.Name}: Critical({c.Critical}) High({c.High}) Moderate({c.Moderate}) Low({c.Low}) Info({c.Information})"
+                    + (c.Unmapped > 0 ? $" Unmapped({c.Unmapped})" : string.Empty));
+            }
+        }
+
+        return lines.Select(line => line.Length > width ? line[..width] : line).ToList();
     }
 
     // Caller holds the gate.

@@ -32,12 +32,12 @@
       "timeoutMinutes": null
     },
     "Semgrep": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     },
     "Snyk": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     },

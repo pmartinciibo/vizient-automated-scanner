@@ -111,7 +111,22 @@ public sealed record ToolProgress
     /// <summary>"hh:mm:ss" left at the pace so far, "--:--:--" while unknown, zero once the step has ended. Filled in when the status is published.</summary>
     public string EstimatedRemainingTime { get; init; } = "00:00:00";
 
+    /// <summary>Findings so far by normalized severity, for a scanner. Null for a step that has none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SeverityCounts? Severities { get; init; }
+
+    /// <summary>On the "Scanning" step only: each scanner in it, with its own status and severity counts.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<ScannerProgress>? Scanners { get; init; }
+
     public string? Message { get; init; }
+}
+
+public sealed record ScannerProgress
+{
+    public string Name { get; init; } = string.Empty;
+    public ToolRunState Status { get; init; } = ToolRunState.Pending;
+    public SeverityCounts Severities { get; init; } = new();
 }
 
 public sealed record EffectiveToolSettings

@@ -11,7 +11,7 @@ public sealed record EngineConfig(
     string StateRoot,
     string TmpRoot,
     string LogsRoot,
-    int StatusIntervalSeconds = 5,
+    int StatusIntervalSeconds = 2,
     int CommandIntervalSeconds = 2,
     EngineSettings? Settings = null,
     string? ExclusionsFile = null)

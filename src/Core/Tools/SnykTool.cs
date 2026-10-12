@@ -1,3 +1,4 @@
+using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Processes;
 using Vizient.AutomatedScanner.Core.Work;
 
@@ -76,12 +77,12 @@ public sealed class SnykTool : ProcessScanTool
         if (!File.Exists(work.ResultFile) || new FileInfo(work.ResultFile).Length == 0)
         {
             await File.WriteAllTextAsync(work.ResultFile, "[]", cancellationToken);
-            return Success(started, 0);
+            return Success(started, 0, severities: new SeverityCounts());
         }
 
         try
         {
-            return Success(started, ScanOutput.CountSnyk(work.ResultFile));
+            return Success(started, ScanOutput.CountSnyk(work.ResultFile), severities: ScanOutput.SnykSeverities(work.ResultFile));
         }
         catch (System.Text.Json.JsonException ex)
         {

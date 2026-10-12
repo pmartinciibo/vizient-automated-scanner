@@ -11,6 +11,10 @@ public sealed record ToolDoneMarker
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset EndedAt { get; init; }
     public int FindingCount { get; init; }
+
+    /// <summary>The findings by normalized severity, for a scanner that reads them. Null where the tool does not.</summary>
+    public SeverityCounts? Severities { get; init; }
+
     public bool Canary { get; init; }
 }
 

@@ -62,7 +62,7 @@ public sealed class SemgrepTool : ProcessScanTool
 
         try
         {
-            return Success(started, ScanOutput.CountArray(work.ResultFile, "results"));
+            return Success(started, ScanOutput.CountArray(work.ResultFile, "results"), severities: ScanOutput.SemgrepSeverities(work.ResultFile));
         }
         catch (Exception ex) when (ex is InvalidDataException or System.Text.Json.JsonException)
         {

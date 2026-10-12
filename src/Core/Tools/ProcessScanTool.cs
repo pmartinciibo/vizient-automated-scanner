@@ -89,12 +89,13 @@ public abstract class ProcessScanTool : ScanToolBase
     }
 
     /// <summary>The marker for a clean run. The skip key is filled in by <see cref="ScanToolBase"/>.</summary>
-    protected RepoWorkResult Success(DateTimeOffset started, int findingCount, string? scanMode = null) =>
+    protected RepoWorkResult Success(DateTimeOffset started, int findingCount, string? scanMode = null, SeverityCounts? severities = null) =>
         RepoWorkResult.Done(new ToolDoneMarker
         {
             StartedAt = started,
             EndedAt = Time.GetUtcNow(),
             FindingCount = findingCount,
+            Severities = severities,
             ScanMode = scanMode ?? string.Empty
         });
 

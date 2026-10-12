@@ -387,6 +387,7 @@ public sealed class RunStatusTracker
             Skipped = counted.Item4,
             Running = counted.Item5,
             Canaries = tools.Sum(t => t.Canaries),
+            Scanners = tools.Select(t => new ScannerProgress { Name = t.Name, Status = t.Status, Severities = t.Severities ?? new SeverityCounts() }).ToList(),
             Message = notes.Count == 0 ? null : string.Join(" | ", notes)
         };
     }

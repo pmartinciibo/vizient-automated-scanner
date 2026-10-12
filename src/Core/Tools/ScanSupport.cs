@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Vizient.AutomatedScanner.Core.Configuration;
+using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.RepoClone;
 
 namespace Vizient.AutomatedScanner.Core.Tools;
@@ -65,6 +66,101 @@ internal static class ScanOutput
                 ? array.GetArrayLength()
                 : throw new InvalidDataException($"The output has no \"{property}\" list.");
     }
+
+    /// <summary>TruffleHog's findings by severity: a line each, verified or not.</summary>
+    public static SeverityCounts TruffleHogSeverities(string path)
+    {
+        var counts = new SeverityCounts();
+        foreach (var line in File.ReadLines(path).Where(l => !string.IsNullOrWhiteSpace(l)))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                var verified = document.RootElement.ValueKind == JsonValueKind.Object
+                    && document.RootElement.TryGetProperty("Verified", out var v)
+                    && v.ValueKind == JsonValueKind.True;
+                counts = counts.Plus(SeverityMapper.MapSecret(verified));
+            }
+            catch (JsonException)
+            {
+                // A line that is not a finding object is still counted as a line, so it shows up rather than vanishing.
+                counts = counts.Plus(NormalizedSeverity.Unmapped);
+            }
+        }
+
+        return counts;
+    }
+
+    /// <summary>Semgrep's findings by severity, from each result's "extra.severity".</summary>
+    public static SeverityCounts SemgrepSeverities(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var document = JsonDocument.Parse(stream);
+        var severities = document.RootElement.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array
+            ? results.EnumerateArray().Select(r => r.TryGetProperty("extra", out var extra) ? StringOf(extra, "severity") : null).ToList()
+            : [];
+        return SeverityMapper.Count(ToolNames.Semgrep, severities);
+    }
+
+    /// <summary>
+    /// Sonar's findings by severity, from the file CollectAsync wrote ({ project, total, issues }). The classic "severity"
+    /// is used. Newer servers also say "impacts", which this does not read.
+    /// </summary>
+    public static SeverityCounts SonarSeverities(string tool, string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var document = JsonDocument.Parse(stream);
+        var severities = document.RootElement.TryGetProperty("issues", out var issues) && issues.ValueKind == JsonValueKind.Array
+            ? issues.EnumerateArray().Select(i => StringOf(i, "severity")).ToList()
+            : [];
+        return SeverityMapper.Count(tool, severities);
+    }
+
+    /// <summary>Snyk's findings by severity: a SARIF result's "level", or an open source vulnerability's "severity".</summary>
+    public static SeverityCounts SnykSeverities(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var document = JsonDocument.Parse(stream);
+        var severities = new List<string?>();
+        Collect(document.RootElement);
+        return SeverityMapper.Count(ToolNames.Snyk, severities);
+
+        void Collect(JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Array:
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        Collect(item);
+                    }
+
+                    break;
+                case JsonValueKind.Object:
+                    if (element.TryGetProperty("runs", out var runs) && runs.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var run in runs.EnumerateArray())
+                        {
+                            if (run.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array)
+                            {
+                                severities.AddRange(results.EnumerateArray().Select(r => StringOf(r, "level")));
+                            }
+                        }
+                    }
+                    else if (element.TryGetProperty("vulnerabilities", out var vulns) && vulns.ValueKind == JsonValueKind.Array)
+                    {
+                        severities.AddRange(vulns.EnumerateArray().Select(v => StringOf(v, "severity")));
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private static string? StringOf(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     /// <summary>
     /// Snyk's findings. Snyk Code writes SARIF (runs, each with results). Snyk open source writes an object with

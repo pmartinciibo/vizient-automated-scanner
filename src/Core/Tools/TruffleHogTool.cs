@@ -70,6 +70,6 @@ public sealed class TruffleHogTool : ProcessScanTool
             return Failure(process);
         }
 
-        return Success(started, ScanOutput.CountLines(work.ResultFile));
+        return Success(started, ScanOutput.CountLines(work.ResultFile), severities: ScanOutput.TruffleHogSeverities(work.ResultFile));
     }
 }

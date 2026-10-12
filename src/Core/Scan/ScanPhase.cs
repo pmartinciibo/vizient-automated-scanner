@@ -553,6 +553,7 @@ public sealed class ScanPhase
         private int _failed;
         private int _skipped;
         private int _running;
+        private SeverityCounts _severities = new();
         private int _inUse;
         private readonly List<string> _runningLabels = new();
         private int _notStarted;
@@ -753,6 +754,7 @@ public sealed class ScanPhase
                 {
                     case RepoWorkKind.Done:
                         _done++;
+                        _severities = _severities.Plus(result.DoneMarker!.Severities);
                         _failedKeys.Remove(repo.Key);
                         break;
                     case RepoWorkKind.Failed:
@@ -818,9 +820,11 @@ public sealed class ScanPhase
         public void Publish(string? message = null)
         {
             int total, done, failed, skipped, running;
+            SeverityCounts severities;
             lock (_gate)
             {
                 (total, done, failed, skipped, running) = (_total, _done, _failed, _skipped, _running);
+                severities = _severities;
 
                 // Unless a message was given on purpose, say how far along it is and what is being scanned now.
                 if (message is null && _running > 0)
@@ -836,6 +840,7 @@ public sealed class ScanPhase
                 Failed = failed,
                 Skipped = skipped,
                 Running = running,
+                Severities = severities,
                 // A disabled step keeps the message that says why.
                 Message = step.Status == ToolRunState.Disabled ? step.Message : message
             });

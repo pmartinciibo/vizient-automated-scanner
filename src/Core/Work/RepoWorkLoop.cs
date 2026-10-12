@@ -31,6 +31,7 @@ public sealed class RepoWorkLoop
     private int _failed;
     private int _skipped;
     private int _running;
+    private SeverityCounts _severities = new();
     private readonly List<string> _runningLabels = new();
     private string? _message;
 
@@ -281,6 +282,7 @@ public sealed class RepoWorkLoop
             {
                 case RepoWorkKind.Done:
                     _done++;
+                    _severities = _severities.Plus(result.DoneMarker!.Severities);
                     _failedKeys.Remove(repo.Key);
                     break;
                 case RepoWorkKind.Failed:
@@ -369,9 +371,11 @@ public sealed class RepoWorkLoop
     {
         int total, done, failed, skipped, running;
         string? message;
+        SeverityCounts severities;
         lock (_gate)
         {
             (total, done, failed, skipped, running, message) = (_total, _done, _failed, _skipped, _running, _message);
+            severities = _severities;
 
             // A message set on purpose (stopped, disabled) stands. Otherwise say how far along it is and what is running now.
             if (message is null && _running > 0)
@@ -387,6 +391,7 @@ public sealed class RepoWorkLoop
             Failed = failed,
             Skipped = skipped,
             Running = running,
+            Severities = ToolNames.Scanners.Contains(_tool) ? severities : null,
             // A disabled step keeps the message that says why.
             Message = step.Status == ToolRunState.Disabled ? step.Message : message
         });

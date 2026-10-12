@@ -115,7 +115,7 @@ public abstract class SonarTool(
 
             EnsureResultsFolder(work);
             var count = await FetchIssuesAsync(api, ServerUrl(context), projectKey, token, work.ResultFile, cancellationToken);
-            return Success(started, count);
+            return Success(started, count, severities: ScanOutput.SonarSeverities(Name, work.ResultFile));
         }
         catch (SonarException ex)
         {
