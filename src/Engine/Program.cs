@@ -85,6 +85,12 @@ var statusWriter = new StatusWriter(
     TimeSpan.FromSeconds(context.Config.StatusIntervalSeconds));
 await statusWriter.StartAsync();
 
+// One line per step, updated in place. Skipped when the output is redirected.
+var display = ConsoleStatusDisplay.IsSupported()
+    ? new ConsoleStatusDisplay(context.Status, TimeSpan.FromSeconds(1))
+    : null;
+display?.Start();
+
 // command.json beside the request: pause, stop, abort, concurrency and so on, while the run is going.
 // Leave a copy with the supported commands described at the top for the invoker to fill in.
 try
@@ -174,6 +180,11 @@ try
     await commandWatcher.StopAsync();
     context.Status.Finish(finalState);
     await statusWriter.StopAsync();
+    if (display is not null)
+    {
+        await display.StopAsync();
+    }
+
     await RunResultsWriter.WriteFinalAsync(context, finalState, exitCode, error);
 }
 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

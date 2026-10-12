@@ -19,6 +19,8 @@ public sealed class RunStatusTracker
     private readonly int _attempt;
     private readonly DateTimeOffset _startedAt;
     private readonly Dictionary<string, ToolProgress> _steps;
+    private readonly Dictionary<string, DateTimeOffset> _stepStarts = new();
+    private readonly Dictionary<string, DateTimeOffset> _stepEnds = new();
     private readonly Dictionary<string, EffectiveToolSettings> _effective = new();
     private readonly List<StatusAlert> _alerts = new();
     private readonly List<CommandAcknowledgement> _commandAcks = new();
@@ -226,8 +228,77 @@ public sealed class RunStatusTracker
                 throw new ArgumentException($"Unknown tool '{tool}'.", nameof(tool));
             }
 
-            _steps[tool] = update(step);
+            var updated = update(step);
+            _steps[tool] = updated;
+
+            if (updated.Status == ToolRunState.Running)
+            {
+                _stepStarts.TryAdd(tool, _time.GetUtcNow());
+                _stepEnds.Remove(tool);
+            }
+            else if (IsFinished(updated) && _stepStarts.ContainsKey(tool))
+            {
+                _stepEnds.TryAdd(tool, _time.GetUtcNow());
+            }
         }
+    }
+
+    // Caller holds the gate. A step that never started has taken no time.
+    private TimeSpan ElapsedFor(IEnumerable<string> tools)
+    {
+        var now = _time.GetUtcNow();
+        var started = tools.Where(_stepStarts.ContainsKey).ToList();
+        if (started.Count == 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        var start = started.Min(t => _stepStarts[t]);
+        var end = started.All(_stepEnds.ContainsKey) ? started.Max(t => _stepEnds[t]) : now;
+        return end - start;
+    }
+
+    /// <summary>
+    /// Adds the time fields. Percent is repos (or items) handled out of those to handle; skipped ones are not in the total.
+    /// The estimate assumes the rest goes at the pace so far, so it is unknown ("--:--:--") until something has finished.
+    /// </summary>
+    private static ToolProgress WithTiming(ToolProgress step, TimeSpan elapsed)
+    {
+        var finished = step.Status is ToolRunState.Completed or ToolRunState.CompletedWithFlags or ToolRunState.Failed;
+        var fraction = finished ? 1.0
+            : step.Total > 0 ? Math.Min(1.0, (double)(step.Done + step.Failed) / step.Total)
+            : 0.0;
+
+        string remaining;
+        if (finished)
+        {
+            remaining = FormatElapsed(TimeSpan.Zero);
+        }
+        else if (step.Status == ToolRunState.Running && fraction > 0)
+        {
+            remaining = FormatElapsed(elapsed * ((1 - fraction) / fraction));
+        }
+        else
+        {
+            remaining = step.Status == ToolRunState.Running ? "--:--:--" : FormatElapsed(TimeSpan.Zero);
+        }
+
+        return step with
+        {
+            ElapsedTime = FormatElapsed(elapsed),
+            PercentComplete = (int)(fraction * 100),
+            EstimatedRemainingTime = remaining
+        };
+    }
+
+    private static string FormatElapsed(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        return $"{(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
     }
 
     /// <summary>The scan phase reports how many repos it has to scan and how far it has got.</summary>
@@ -246,14 +317,16 @@ public sealed class RunStatusTracker
     public StatusDocument PublishedSnapshot()
     {
         ScanProgress scan;
+        TimeSpan scanElapsed;
         lock (_gate)
         {
             scan = _scan;
+            scanElapsed = ElapsedFor(ToolNames.Scanners);
         }
 
         var full = Snapshot();
         var scanners = full.Steps.Where(s => ToolNames.Scanners.Contains(s.Name)).ToList();
-        var steps = full.Steps.Where(s => !ToolNames.Scanners.Contains(s.Name)).Append(Aggregate(scanners, scan)).ToList();
+        var steps = full.Steps.Where(s => !ToolNames.Scanners.Contains(s.Name)).Append(WithTiming(Aggregate(scanners, scan), scanElapsed)).ToList();
         var finished = steps.Count(IsFinished);
 
         return full with
@@ -322,7 +395,7 @@ public sealed class RunStatusTracker
     {
         lock (_gate)
         {
-            var steps = ToolNames.All.Select(name => _steps[name]).ToList();
+            var steps = ToolNames.All.Select(name => WithTiming(_steps[name], ElapsedFor(new[] { name }))).ToList();
             var finished = steps.Count(IsFinished);
 
             return new StatusDocument

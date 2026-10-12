@@ -745,7 +745,8 @@ public class RepoCloneTests : IDisposable
             return Task.CompletedTask;
         }).RunAsync(context);
 
-        Assert.StartsWith("GitHub: HTTP 503", note);
+        Assert.EndsWith("GitHub: HTTP 503; retrying in 1s", note);
+        Assert.StartsWith("discovery: ", note);
     }
 
     [Fact]

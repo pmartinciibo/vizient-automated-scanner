@@ -36,6 +36,13 @@ public sealed class RepoCloneTool(
         var clock = time ?? TimeProvider.System;
         var settings = context.Config.Current.Tool(Name);
         var sources = context.Config.Current.Sources;
+
+        // Listing comes first and covers every source and org, so the status can say how far along the whole of it is, not
+        // only the org being read: how many orgs are listed of those known, and how many repos have been found in all.
+        var orgsKnown = 0;
+        var orgsFinished = 0;
+        var reposFound = 0;
+        string Overall() => $"discovery: {orgsFinished} of {orgsKnown} orgs listed, {reposFound} repos found; ";
         if (sources.Count == 0)
         {
             throw new InvalidOperationException("RepoClone needs at least one entry in engine.json \"sources\", an ADO or a GitHub one.");
@@ -55,15 +62,15 @@ public sealed class RepoCloneTool(
             Mask,
             delay ?? ((wait, token) => Task.Delay(wait, token)),
             TimeSpan.FromSeconds(60),
-            message => context.Status.UpdateStep(Name, step => step with { Message = $"{source}: {message}" }));
+            message => context.Status.UpdateStep(Name, step => step with { Message = $"{Overall()}{source}: {message}" }));
         // While listing, the status says which source, which org and how far it has got.
         var gitHub = new GitHubLister(ApiFor(SourceSettings.GitHub))
         {
-            Progress = note => context.Status.UpdateStep(Name, step => step with { Message = $"GitHub: {note}" })
+            Progress = note => context.Status.UpdateStep(Name, step => step with { Message = $"{Overall()}GitHub: {note}" })
         };
         var ado = new AdoLister(ApiFor(SourceSettings.Ado))
         {
-            Progress = note => context.Status.UpdateStep(Name, step => step with { Message = $"ADO: {note}" })
+            Progress = note => context.Status.UpdateStep(Name, step => step with { Message = $"{Overall()}ADO: {note}" })
         };
         var entra = new AdoEntraAccess(context.Processes, settings, clock, AddSecret);
 
@@ -88,6 +95,7 @@ public sealed class RepoCloneTool(
             failures.Add($"{label}: {Mask(ex.Message)}");
             if (org.Length > 0)
             {
+                orgsFinished++;
                 context.Repos.SetOrgStatus(source, org, Mask(ex.Message));
             }
 
@@ -129,6 +137,8 @@ public sealed class RepoCloneTool(
                 At = clock.GetUtcNow()
             });
         }
+
+        orgsKnown = requested.Where(s => s.Source != SourceSettings.GitHub).Sum(s => s.NamedOrgs().Count);
 
         if (requested.Count == 0)
         {
@@ -173,7 +183,7 @@ public sealed class RepoCloneTool(
                         {
                             context.Status.UpdateStep(Name, step => step with
                             {
-                                Message = $"GitHub: the token lists no organization memberships (usual for a fine-grained token); found {orgs.Count} from the repositories it can reach: {string.Join(", ", orgs)}"
+                                Message = $"{Overall()}GitHub: the token lists no organization memberships (usual for a fine-grained token); found {orgs.Count} from the repositories it can reach: {string.Join(", ", orgs)}"
                             });
                         }
                     }
@@ -238,6 +248,8 @@ public sealed class RepoCloneTool(
                     continue;
                 }
 
+                orgsKnown += owners.Count;
+
                 foreach (var (org, isPerson) in owners)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -253,8 +265,10 @@ public sealed class RepoCloneTool(
                         credentials[RepoSynchronizer.CredentialKey(SourceSettings.GitHub, org)] = credential;
                         discovered.AddRange(listed);
                         listedOrgs++;
+                        orgsFinished++;
+                        reposFound += listed.Count;
                         context.Repos.SetOrgStatus(SourceSettings.GitHub, org, $"{listed.Count} repos found");
-                        context.Status.UpdateStep(Name, step => step with { Message = $"listed {listed.Count} repos in GitHub/{org}{(isPerson ? " (the account's own)" : string.Empty)}" });
+                        context.Status.UpdateStep(Name, step => step with { Message = $"{Overall()}listed GitHub/{org}{(isPerson ? " (the account's own)" : string.Empty)}" });
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -287,8 +301,10 @@ public sealed class RepoCloneTool(
                     credentials[RepoSynchronizer.CredentialKey(source.Source, adoOrg)] = credential;
                     discovered.AddRange(listed);
                     listedOrgs++;
+                    orgsFinished++;
+                    reposFound += listed.Count;
                     context.Repos.SetOrgStatus(source.Source, adoOrg, $"{listed.Count} repos found");
-                    context.Status.UpdateStep(Name, step => step with { Message = $"listed {listed.Count} repos in {source.Source}/{adoOrg}" });
+                    context.Status.UpdateStep(Name, step => step with { Message = $"{Overall()}listed {source.Source}/{adoOrg}" });
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -329,6 +345,12 @@ public sealed class RepoCloneTool(
 
         SourceState StateOfRepo(string source, string org) =>
             stateOfOrg.GetValueOrDefault($"{source}|{org}", SourceState.Clone);
+
+        context.Status.UpdateStep(Name, step => step with
+        {
+            Message = $"discovery done: {reposFound} repos found in {orgsFinished} orgs"
+                + (failures.Count > 0 ? $", {failures.Count} could not be listed" : string.Empty)
+        });
 
         // 2. Report what is known for every repo before any cloning, so results.json shows them even if the run stops.
         var unique = discovered.GroupBy(r => r.Key, StringComparer.Ordinal).Select(g => g.First()).ToList();

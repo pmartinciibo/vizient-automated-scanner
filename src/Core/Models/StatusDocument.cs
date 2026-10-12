@@ -101,6 +101,16 @@ public sealed record ToolProgress
     public int Skipped { get; init; }
     public int Canaries { get; init; }
     public int Running { get; init; }
+
+    /// <summary>"hh:mm:ss": time since the step started while it runs, the total once it has ended. Filled in when the status is published.</summary>
+    public string ElapsedTime { get; init; } = "00:00:00";
+
+    /// <summary>0 to 100: items handled out of those to handle (skipped ones are not counted). 100 once the step has ended. Filled in when the status is published.</summary>
+    public int PercentComplete { get; init; }
+
+    /// <summary>"hh:mm:ss" left at the pace so far, "--:--:--" while unknown, zero once the step has ended. Filled in when the status is published.</summary>
+    public string EstimatedRemainingTime { get; init; } = "00:00:00";
+
     public string? Message { get; init; }
 }
 

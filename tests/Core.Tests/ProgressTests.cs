@@ -84,8 +84,8 @@ public class ProgressTests : IDisposable
 
         await new RepoCloneTool(sources, (_, _) => Task.CompletedTask).RunAsync(context);
 
-        Assert.Contains("GitHub: finding the organizations of the token", seen);
-        Assert.Contains("GitHub: listing the repos of alpha (page 1, 0 so far)", seen);
+        Assert.Contains(seen, m => m is not null && m.EndsWith("GitHub: finding the organizations of the token"));
+        Assert.Contains(seen, m => m is not null && m.EndsWith("GitHub: listing the repos of alpha (page 1, 0 so far)"));
     }
 
     [Fact]
@@ -108,8 +108,44 @@ public class ProgressTests : IDisposable
 
         await new RepoCloneTool(sources, (_, _) => Task.CompletedTask).RunAsync(context);
 
-        Assert.Contains(seen, m => m is not null && m.StartsWith("ADO: vz: listing the repos of project 1 of 2 (ProjA)"));
-        Assert.Contains(seen, m => m is not null && m.StartsWith("ADO: vz: listing the repos of project 2 of 2 (Proj B)"));
+        Assert.Contains(seen, m => m is not null && m.Contains("ADO: vz: listing the repos of project 1 of 2 (ProjA)"));
+        Assert.Contains(seen, m => m is not null && m.Contains("ADO: vz: listing the repos of project 2 of 2 (Proj B)"));
+    }
+
+    [Fact]
+    public async Task WhileListingTheStatusCountsOrgsAndReposAcrossEverySourceNotJustTheCurrentOrg()
+    {
+        using var run = new RepoCloneRun();
+        var a = run.Origin("a");
+        var b = run.Origin("b");
+        run.With(s => s with
+        {
+            Sources = [new SourceSettings { Name = "Ado", Source = "ADO", Org = "vz", TokenSecret = "gh-token" },
+                       new SourceSettings { Name = "GitHub", Source = "GitHub", TokenSecret = "gh-token" }]
+        });
+        var context = await run.NewRunAsync();
+        var seen = new List<string?>();
+        var ado = AdoFake(a);
+        var sources = new FakeSources
+        {
+            Orgs = ["alpha", "beta"],
+            Respond = uri =>
+            {
+                seen.Add(context.Status.Snapshot().Steps.Single(s => s.Name == "RepoClone").Message);
+                return uri.Host == "dev.azure.com"
+                    ? ado(uri)
+                    : uri.Query.Contains("page=1") && uri.AbsolutePath == "/orgs/alpha/repos"
+                        ? FakeSources.GitHubList(FakeSources.GitHubRepo(7, "one", b.Path))
+                        : FakeSources.GitHubList();
+            }
+        };
+
+        await new RepoCloneTool(sources, (_, _) => Task.CompletedTask).RunAsync(context);
+
+        // The ADO org is known from the start, so it is one of 1. Once GitHub says it has two orgs, the whole is 3.
+        Assert.Contains(seen, m => m is not null && m.StartsWith("discovery: 0 of 1 orgs listed, 0 repos found; ADO: vz:"));
+        Assert.Contains(seen, m => m is not null && m.StartsWith("discovery: 1 of 3 orgs listed, 1 repos found; GitHub:"));
+        Assert.Contains(seen, m => m is not null && m.StartsWith("discovery: 2 of 3 orgs listed, 2 repos found; GitHub:"));
     }
 
     // Two projects, one repo in the first.

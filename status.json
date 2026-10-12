@@ -1,20 +1,20 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-12T02-04-41Z",
+  "runId": "2026-10-12T02-48-47Z",
   "revision": 1,
   "attempt": 1,
-  "state": "Stopped",
+  "state": "Running",
   "paused": false,
-  "pid": 25636,
+  "pid": 21452,
   "mode": "Normal",
-  "startedAt": "2026-10-12T02:04:41.1387279+00:00",
-  "updatedAt": "2026-10-12T02:19:20.5775686+00:00",
-  "endedAt": "2026-10-12T02:19:20.5758512+00:00",
+  "startedAt": "2026-10-12T02:48:47.6381241+00:00",
+  "updatedAt": "2026-10-12T02:55:09.7253839+00:00",
+  "endedAt": null,
   "phase": "Import\u002BClone",
   "overall": {
-    "percent": 87,
-    "stepsCompleted": 7,
-    "stepsTotal": 8
+    "percent": 75,
+    "stepsCompleted": 3,
+    "stepsTotal": 4
   },
   "steps": [
     {
@@ -26,6 +26,9 @@
       "skipped": 0,
       "canaries": 0,
       "running": 0,
+      "elapsedTime": "00:00:00",
+      "percentComplete": 0,
+      "estimatedRemainingTime": "00:00:00",
       "message": "disabled in request.json"
     },
     {
@@ -37,21 +40,27 @@
       "skipped": 0,
       "canaries": 0,
       "running": 0,
+      "elapsedTime": "00:00:00",
+      "percentComplete": 0,
+      "estimatedRemainingTime": "00:00:00",
       "message": "disabled in request.json"
     },
     {
       "name": "RepoClone",
       "status": "Running",
-      "done": 532,
+      "done": 281,
       "total": 3050,
       "failed": 0,
       "skipped": 1431,
       "canaries": 0,
-      "running": 0,
-      "message": null
+      "running": 12,
+      "elapsedTime": "00:06:21",
+      "percentComplete": 9,
+      "estimatedRemainingTime": "01:02:44",
+      "message": "281 of 3050 processed, 1431 skipped; now: ADO vizientinc/CDBSLA/CMSGRouper (\u002B11 more running)"
     },
     {
-      "name": "TruffleHog",
+      "name": "Scanning",
       "status": "Disabled",
       "done": 0,
       "total": 0,
@@ -59,50 +68,9 @@
       "skipped": 0,
       "canaries": 0,
       "running": 0,
-      "message": "disabled in request.json"
-    },
-    {
-      "name": "Semgrep",
-      "status": "Disabled",
-      "done": 0,
-      "total": 0,
-      "failed": 0,
-      "skipped": 0,
-      "canaries": 0,
-      "running": 0,
-      "message": "disabled in request.json"
-    },
-    {
-      "name": "Snyk",
-      "status": "Disabled",
-      "done": 0,
-      "total": 0,
-      "failed": 0,
-      "skipped": 0,
-      "canaries": 0,
-      "running": 0,
-      "message": "disabled in request.json"
-    },
-    {
-      "name": "SonarStandard",
-      "status": "Disabled",
-      "done": 0,
-      "total": 0,
-      "failed": 0,
-      "skipped": 0,
-      "canaries": 0,
-      "running": 0,
-      "message": "disabled in request.json"
-    },
-    {
-      "name": "SonarDotNet",
-      "status": "Disabled",
-      "done": 0,
-      "total": 0,
-      "failed": 0,
-      "skipped": 0,
-      "canaries": 0,
-      "running": 0,
+      "elapsedTime": "00:00:00",
+      "percentComplete": 0,
+      "estimatedRemainingTime": "00:00:00",
       "message": "disabled in request.json"
     }
   ],
@@ -116,7 +84,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-12T02:04:58.9725332+00:00"
+      "at": "2026-10-12T02:49:02.6039402+00:00"
     },
     {
       "type": "OrgNotListed",
@@ -126,7 +94,7 @@
       "expiresAt": null,
       "was": null,
       "now": null,
-      "at": "2026-10-12T02:06:06.6072656+00:00"
+      "at": "2026-10-12T02:49:06.0237618+00:00"
     }
   ],
   "lastCommandSeq": 0,
