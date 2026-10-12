@@ -7,17 +7,17 @@
   "mode": "Normal",
   "tools": {
     "Rapid7": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     },
     "CheckMarx": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     },
     "RepoClone": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null,
       "sources": {

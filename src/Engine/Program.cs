@@ -85,6 +85,14 @@ var statusWriter = new StatusWriter(
     TimeSpan.FromSeconds(context.Config.StatusIntervalSeconds));
 await statusWriter.StartAsync();
 
+using var consoleStatusCancellation = new CancellationTokenSource();
+var consoleStatusTask = new ConsoleStatusDisplay(
+    context.Status,
+    Console.Out,
+    !Console.IsOutputRedirected,
+    TimeSpan.FromSeconds(context.Config.StatusIntervalSeconds))
+    .RunAsync(consoleStatusCancellation.Token);
+
 // command.json beside the request: pause, stop, abort, concurrency and so on, while the run is going.
 // Leave a copy with the supported commands described at the top for the invoker to fill in.
 try
@@ -167,6 +175,9 @@ catch (Exception ex)
     exitCode = 2;
     error = ex.Message;
 }
+
+await consoleStatusCancellation.CancelAsync();
+await consoleStatusTask;
 
 try
 {

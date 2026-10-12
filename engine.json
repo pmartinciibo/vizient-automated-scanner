@@ -10,9 +10,12 @@
   "statusIntervalSeconds": 2,
   "commandIntervalSeconds": 2,
   "sources": [
-    { "source": "ADO", "name": "VizientInc", "org": "vizientinc",  "tokenSecret": "ado-pat" , "orgs": [ "RnD-Vizient", "vizientinc" ]},
-    { "source": "ADO", "name": "ClaroHealthCareADO", "org": "clarohealthcare", "tokenSecret": "clarohealthcare-pat" },
-    { "source": "GitHub", "name": "GitHubRepos", "tokenSecret": "github-token", "includeOwnRepos": false, "orgs": [ "preftech", "aptitudemarketplace", "safeandreliable" ] }
+    { "source": "ADO", "org": "vizientinc", "tokenSecret": "ado-pat" },
+    { "source": "ADO", "org": "RnD-Vizient", "tokenSecret": "ado-pat" },
+    { "source": "ADO", "org": "clarohealthcare", "tokenSecret": "clarohealthcare-pat" },
+    { "source": "GitHub", "org": "preftech", "tokenSecret": "github-token" },
+    { "source": "GitHub", "org": "aptitudemarketplace", "tokenSecret": "github-token" },
+    { "source": "GitHub", "org": "safeandreliable", "tokenSecret": "github-token" }
   ],
   "scanArchived": false,
   "skip": { "enabled": true, "canaryPercent": 5, "fullRescanEveryDays": 30 },
