@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 3,
+  "paths": {
+    "reposRoot": "D:\\Repos",
+    "runs": "D:\\Scanner\\runs",
+    "state": "D:\\Scanner\\state",
+    "tmp": "D:\\Scanner\\tmp",
+    "logs": "D:\\Scanner\\logs"
+  },
+  "statusIntervalSeconds": 2,
+  "commandIntervalSeconds": 2,
+  "sources": [
+    { "source": "ADO", "name": "AdoExample", "org": "your-ado-org", "tokenSecret": "ado-pat" },
+    { "source": "GitHub", "name": "GitHubExample", "tokenSecret": "github-token", "orgs": [ "your-github-org" ] }
+  ],
+  "scanArchived": false,
+  "skip": { "enabled": true, "canaryPercent": 5, "fullRescanEveryDays": 30 },
+  "retry": { "maxAttempts": 2, "backoffSeconds": 60 },
+  "tools": {
+    "Rapid7": {
+      "enabled": true,
+      "tokenSecret": "rapid7-token",
+      "baseUrl": "https://example.invalid/ias/v1",
+      "authMode": "api_key",
+      "pageSize": 100
+    },
+    "CheckMarx": {
+      "enabled": true,
+      "tokenSecret": "checkmarx-token",
+      "baseUrl": "https://example.invalid",
+      "tenant": "example-tenant",
+      "clientId": "ast-app",
+      "pageSize": 100
+    },
+    "RepoClone": {
+      "enabled": true,
+      "maxParallel": 12,
+      "timeoutMinutes": 60,
+      "longPaths": true
+    },
+    "TruffleHog": {
+      "enabled": true,
+      "maxParallel": 8,
+      "timeoutMinutes": 30,
+      "version": "3.x",
+      "rulesVersion": "detectors-3.x",
+      "mode": "filesystem",
+      "verify": false
+    },
+    "Semgrep": {
+      "enabled": true,
+      "maxParallel": 8,
+      "timeoutMinutes": 30,
+      "version": "1.x",
+      "rulesVersion": "p/default",
+      "packs": [ "p/default" ]
+    },
+    "Snyk": {
+      "enabled": true,
+      "maxParallel": 4,
+      "timeoutMinutes": 45,
+      "version": "1.x",
+      "rulesVersion": "n/a",
+      "mode": "code",
+      "env": { "SNYK_TOKEN": "snyk-token" }
+    },
+    "SonarStandard": {
+      "enabled": true,
+      "maxParallel": 4,
+      "timeoutMinutes": 60,
+      "version": "10.x",
+      "rulesVersion": "profile-example",
+      "serverUrl": "http://localhost:9000",
+      "env": { "SONAR_TOKEN": "sonar-token" }
+    },
+    "SonarDotNet": {
+      "enabled": true,
+      "maxParallel": 4,
+      "timeoutMinutes": 60,
+      "version": "10.x",
+      "rulesVersion": "profile-example",
+      "serverUrl": "http://localhost:9000",
+      "env": { "SONAR_TOKEN": "sonar-token" },
+      "runAs": { "account": "DOMAIN\\svc-buildtools", "passwordSecret": "buildtools-account-password" }
+    }
+  }
+}

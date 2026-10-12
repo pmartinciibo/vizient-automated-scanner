@@ -163,7 +163,12 @@ VOLUME MAP
 --------------------------------------------------------------------------------
 
   - Copy the build to C:\Scanner\bin\engine.
-  - Put engine.json and exclusions.txt in C:\Scanner\config.
+  - Keep engine.json machine-local; it is ignored by Git. Copy engine.example.json
+    to C:\Scanner\bin\engine\engine.json (beside the executable), then set the
+    machine's paths, source organizations, tool settings, and secret names.
+  - Never put secret values in engine.json. Load them into secrets.dat with the
+    secrets command while running as svc-scanner.
+  - Put exclusions.txt beside engine.json if paths.exclusions names it.
   - As svc-scanner, load the secrets (see the design document), then run:
       engine secrets check
   - Create the Task Scheduler jobs:

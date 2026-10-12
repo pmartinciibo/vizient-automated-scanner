@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# Machine-specific scanner configuration; copy engine.example.json locally.
+/engine.json
+
 # User-specific files
 *.rsuser
 *.suo

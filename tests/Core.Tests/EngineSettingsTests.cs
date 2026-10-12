@@ -106,7 +106,7 @@ public class EngineSettingsTests : IDisposable
     }
 
     [Fact]
-    public async Task TheEngineJsonShippedInTheRepoIsValid()
+    public async Task TheEngineExampleJsonInTheRepoIsValid()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Vizient.AutomatedScanner.slnx")))
@@ -115,7 +115,7 @@ public class EngineSettingsTests : IDisposable
         }
 
         Assert.NotNull(dir);
-        var config = await EngineConfig.LoadAsync(Path.Combine(dir.FullName, "engine.json"), CancellationToken.None);
+        var config = await EngineConfig.LoadAsync(Path.Combine(dir.FullName, "engine.example.json"), CancellationToken.None);
 
         Assert.Equal(ToolNames.All.Count, config.Current.Tools.Count);
         Assert.NotEmpty(config.Current.Sources);

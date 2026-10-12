@@ -2,7 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Core\Vizient.AutomatedScanner.Core.csproj" />
-    <Content Include="..\..\engine.json" Link="engine.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\engine.json" Link="engine.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\engine.json')" />
     <!-- The DPAPI-encrypted secrets file in the project root. It is copied beside the executable when it exists, so a fresh clone with no secrets file still builds. -->
     <Content Include="..\..\secrets.dat" Link="secrets.dat" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\..\secrets.dat')" />
   </ItemGroup>
