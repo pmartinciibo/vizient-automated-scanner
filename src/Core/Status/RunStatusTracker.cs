@@ -243,29 +243,40 @@ public sealed class RunStatusTracker
         }
     }
 
-    // Caller holds the gate. A step that never started has taken no time.
-    private TimeSpan ElapsedFor(IEnumerable<string> tools)
+    private readonly record struct StepWindow(DateTimeOffset? Start, DateTimeOffset? End, TimeSpan Elapsed);
+
+    // Caller holds the gate. A step that never started has taken no time. A step of several tools starts with the first
+    // and ends with the last, and has no end while any of them is still going.
+    private StepWindow WindowFor(IEnumerable<string> tools)
     {
         var now = _time.GetUtcNow();
         var started = tools.Where(_stepStarts.ContainsKey).ToList();
         if (started.Count == 0)
         {
-            return TimeSpan.Zero;
+            return new StepWindow(null, null, TimeSpan.Zero);
         }
 
         var start = started.Min(t => _stepStarts[t]);
-        var end = started.All(_stepEnds.ContainsKey) ? started.Max(t => _stepEnds[t]) : now;
-        return end - start;
+        DateTimeOffset? end = started.All(_stepEnds.ContainsKey) ? started.Max(t => _stepEnds[t]) : null;
+        return new StepWindow(start, end, (end ?? now) - start);
     }
 
     /// <summary>
     /// Adds the time fields. Percent is repos (or items) handled out of those to handle; skipped ones are not in the total.
     /// The estimate assumes the rest goes at the pace so far, so it is unknown ("--:--:--") until something has finished.
     /// </summary>
-    private static ToolProgress WithTiming(ToolProgress step, TimeSpan elapsed)
+    private static ToolProgress WithTiming(ToolProgress step, StepWindow window)
     {
+        var elapsed = window.Elapsed;
         var finished = step.Status is ToolRunState.Completed or ToolRunState.CompletedWithFlags or ToolRunState.Failed;
+
+        // While repos are still being found or planned the total is not the total yet, so there is nothing to estimate from.
+        var stillCounting = step.Status == ToolRunState.Running
+            && step.Message is { } note
+            && (note.StartsWith("discovery:", StringComparison.Ordinal) || note.StartsWith("planning:", StringComparison.Ordinal));
+
         var fraction = finished ? 1.0
+            : stillCounting ? 0.0
             : step.Total > 0 ? Math.Min(1.0, (double)(step.Done + step.Failed) / step.Total)
             : 0.0;
 
@@ -285,6 +296,8 @@ public sealed class RunStatusTracker
 
         return step with
         {
+            StartedAt = window.Start,
+            EndedAt = window.End,
             ElapsedTime = FormatElapsed(elapsed),
             PercentComplete = (int)(fraction * 100),
             EstimatedRemainingTime = remaining
@@ -317,11 +330,11 @@ public sealed class RunStatusTracker
     public StatusDocument PublishedSnapshot()
     {
         ScanProgress scan;
-        TimeSpan scanElapsed;
+        StepWindow scanElapsed;
         lock (_gate)
         {
             scan = _scan;
-            scanElapsed = ElapsedFor(ToolNames.Scanners);
+            scanElapsed = WindowFor(ToolNames.Scanners);
         }
 
         var full = Snapshot();
@@ -396,7 +409,7 @@ public sealed class RunStatusTracker
     {
         lock (_gate)
         {
-            var steps = ToolNames.All.Select(name => WithTiming(_steps[name], ElapsedFor(new[] { name }))).ToList();
+            var steps = ToolNames.All.Select(name => WithTiming(_steps[name], WindowFor(new[] { name }))).ToList();
             var finished = steps.Count(IsFinished);
 
             return new StatusDocument

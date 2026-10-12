@@ -8,11 +8,14 @@ namespace Vizient.AutomatedScanner.Core.RepoClone;
 /// </summary>
 public static class RepoLayout
 {
-    public static string PathFor(string reposRoot, DiscoveredRepo repo)
+    public static string PathFor(string reposRoot, DiscoveredRepo repo) =>
+        PathFor(reposRoot, repo.Source, repo.Org, repo.Project, repo.Name);
+
+    public static string PathFor(string reposRoot, string source, string org, string? project, string name)
     {
-        var parts = string.Equals(repo.Source, RepoOutcome.GitHub, StringComparison.OrdinalIgnoreCase)
-            ? new[] { "GitHub", repo.Org, repo.Name }
-            : new[] { "ADO", repo.Org, repo.Project ?? RepoOutcome.Unassigned, repo.Name };
+        var parts = string.Equals(source, RepoOutcome.GitHub, StringComparison.OrdinalIgnoreCase)
+            ? new[] { "GitHub", org, name }
+            : new[] { "ADO", org, project ?? RepoOutcome.Unassigned, name };
 
         return Path.Combine([reposRoot, .. parts.Select(Sanitize)]);
     }

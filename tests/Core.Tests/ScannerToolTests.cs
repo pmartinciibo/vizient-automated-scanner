@@ -245,6 +245,18 @@ public class ScannerToolTests : IDisposable
     }
 
     [Fact]
+    public async Task SnykRunsSnykWinExeUnlessEngineJsonGivesAnExePath()
+    {
+        _world.WithTool("Snyk", t => t with { ExePath = null, Env = new() { ["SNYK_TOKEN"] = "snyk-token" } })
+              .AddSecret("snyk-token", SnykToken);
+        await CloneAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new SnykTool().RunAsync(_world.Context));
+
+        Assert.Contains("'snyk-win.exe'", error.Message);
+    }
+
+    [Fact]
     public async Task SnykDependenciesRunsOpenSourceTestOnAllProjectsAndIsNeverSkipped()
     {
         var exe = Program("snyk");

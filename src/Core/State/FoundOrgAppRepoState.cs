@@ -45,6 +45,8 @@ public sealed class FoundOrgAppRepoState(FoundOrgAppRepoStore store, string runI
                 LoadedSnapshot = document;
                 _loaded = true;
             }
+
+            await store.SeedRunCopyAsync(document, cancellationToken);
         }
         finally
         {
@@ -74,6 +76,20 @@ public sealed class FoundOrgAppRepoState(FoundOrgAppRepoStore store, string runI
         lock (_gate)
         {
             return _repos.Values.Select(s => s.Repo).OrderBy(r => r.Key, StringComparer.Ordinal).ToList();
+        }
+    }
+
+    /// <summary>
+    /// A snapshot written on another machine holds that machine's paths. Points the repo at where its mirror is here.
+    /// </summary>
+    public void Repoint(string repoKey, string localPath)
+    {
+        lock (_gate)
+        {
+            if (_repos.TryGetValue(repoKey, out var stored))
+            {
+                _repos[repoKey] = stored with { Repo = stored.Repo with { LocalPath = localPath } };
+            }
         }
     }
 

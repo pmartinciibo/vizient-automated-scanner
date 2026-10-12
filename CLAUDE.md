@@ -35,7 +35,7 @@ in and out communication path.
 ## Key decisions already made
 
 - File-based in and out. Inputs: `engine.json`, `request.json`, `command.json`. Outputs:
-  `status.json` (rewritten every 5 s), `repo-changes.json`, raw results and
+  `status.json` (rewritten every 2 s, `statusIntervalSeconds`), `repo-changes.json`, raw results and
   per-repo/per-tool markers (`.done.json`, `.failed.json`, `.skipped.json`).
 - One run folder = one scan. Resume reuses the same folder. A new scheduled scan always
   gets a new folder.

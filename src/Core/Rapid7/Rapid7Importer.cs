@@ -180,7 +180,10 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
         var message = vulnerabilitiesSoFar is { } count
             ? $"{page.Area} page {page.PageIndex + 1}{of}: {count} so far ({elapsed!.Value.TotalSeconds:0}s elapsed)"
             : $"{page.Area} page {page.PageIndex + 1}{of}";
-        context.Status.UpdateStep(Tool, step => step with { Message = message });
+
+        // Pages read so far of those the API says there are. Without a total there is no percentage to show, only the elapsed time.
+        var (pages, done) = page.TotalPages is > 0 and var known ? (known, Math.Min(page.PageIndex, known)) : (0, 0);
+        context.Status.UpdateStep(Tool, step => step with { Total = pages, Done = done, Message = message });
     }
 
     // ---- writing ----
@@ -215,7 +218,8 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
         Dictionary<string, RecordSpool> spools,
         CancellationToken cancellationToken)
     {
-        context.Status.UpdateStep(Tool, step => step with { Total = keys.Count, Message = "writing the file" });
+        context.Status.UpdateStep(Tool, step => step with { Total = keys.Count, Done = 0, Message = "writing the file" });
+        var written = 0;
 
         var temporary = Path.Combine(
             Path.GetDirectoryName(OutputPath)!,
@@ -246,6 +250,8 @@ public sealed class Rapid7Importer(RunContext context, Rapid7Client client, Rapi
                         cancellationToken.ThrowIfCancellationRequested();
                         await WriteAppAsync(writer, key, applications, scans, reports, spools, cancellationToken);
                         await writer.FlushAsync(cancellationToken);
+                        var appsWritten = ++written;
+                        context.Status.UpdateStep(Tool, step => step with { Done = appsWritten, Message = $"writing the file: {appsWritten} of {keys.Count} applications" });
                     }
 
                     writer.WriteEndArray();

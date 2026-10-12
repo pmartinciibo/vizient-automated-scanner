@@ -5,14 +5,22 @@ using Vizient.AutomatedScanner.Core.Serialization;
 namespace Vizient.AutomatedScanner.Core.State;
 
 /// <summary>
-/// Reads and writes FoundOrgAppRepo.json in the engine's state folder. Only this app uses the file; it is not a
-/// run output and is not copied anywhere. The write keeps the previous version as a .bak.
+/// Reads and writes FoundOrgAppRepo.json. The one that counts is in the engine's state folder, and its write keeps the
+/// previous version as a .bak. When a runs folder is given, every save also refreshes a "latest" copy directly in it and a
+/// copy in the run's own folder, so the snapshot a run worked from stays beside its other output. A new run starts from the
+/// latest copy and a continuing one (Resume, RetryFailed) from its own, each falling back to the state folder's.
 /// </summary>
-public sealed class FoundOrgAppRepoStore(string stateRoot)
+public sealed class FoundOrgAppRepoStore(string stateRoot, string? runsRoot = null, string? runId = null, bool continuingRun = false)
 {
     public const string FileName = "FoundOrgAppRepo.json";
 
     public string Path { get; } = System.IO.Path.Combine(stateRoot, FileName);
+
+    /// <summary>The newest snapshot, directly in the runs folder. Null when no runs folder was given.</summary>
+    public string? LatestPath { get; } = runsRoot is null ? null : System.IO.Path.Combine(runsRoot, FileName);
+
+    /// <summary>This run's own copy, in its run folder. Null when there is no runs folder or run.</summary>
+    public string? RunPath { get; } = runsRoot is null || runId is null ? null : System.IO.Path.Combine(runsRoot, runId, FileName);
 
     private string BackupPath => Path + ".bak";
 
@@ -25,7 +33,8 @@ public sealed class FoundOrgAppRepoStore(string stateRoot)
     {
         Exception? unreadable = null;
 
-        foreach (var candidate in new[] { Path, BackupPath })
+        var preferred = continuingRun ? RunPath : LatestPath;
+        foreach (var candidate in new[] { preferred, Path, BackupPath }.OfType<string>())
         {
             if (!File.Exists(candidate))
             {
@@ -59,6 +68,37 @@ public sealed class FoundOrgAppRepoStore(string stateRoot)
         }
 
         await AtomicJsonFile.WriteAsync(Path, snapshot, cancellationToken);
+        await WriteCopiesAsync(snapshot, includeLatest: true, cancellationToken);
+    }
+
+    /// <summary>
+    /// Gives a new run its own copy of the snapshot it starts from, so the run folder has it even if the run never
+    /// reaches a save. An existing copy (a continuing run's) is left as it is.
+    /// </summary>
+    public async Task SeedRunCopyAsync(FoundOrgAppRepoDocument snapshot, CancellationToken cancellationToken = default)
+    {
+        if (RunPath is not null && !File.Exists(RunPath))
+        {
+            await WriteCopiesAsync(snapshot, includeLatest: false, cancellationToken);
+        }
+    }
+
+    // The copies are for people and for the next run's start. The state folder's file is the real one, and it is already
+    // written, so a copy that cannot be written (a reader has it open) is skipped, not an error.
+    private async Task WriteCopiesAsync(FoundOrgAppRepoDocument snapshot, bool includeLatest, CancellationToken cancellationToken)
+    {
+        foreach (var copy in new[] { includeLatest ? LatestPath : null, RunPath }.OfType<string>())
+        {
+            try
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(copy)!);
+                await AtomicJsonFile.WriteAsync(copy, snapshot, cancellationToken);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Next save tries again.
+            }
+        }
     }
 
     private static async Task<bool> IsReadableAsync(string path, CancellationToken cancellationToken)

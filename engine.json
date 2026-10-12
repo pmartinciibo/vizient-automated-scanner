@@ -63,8 +63,7 @@
       "version": "1.x",
       "rulesVersion": "n/a",
       "mode": "code",
-      "env": { "SNYK_TOKEN": "snyk-token" },
-      "runAs": { "account": "DOMAIN\\svc-buildtools", "passwordSecret": "buildtools-account-password" }
+      "env": { "SNYK_TOKEN": "snyk-token" }
     },
     "SonarStandard": {
       "enabled": true,

@@ -177,6 +177,10 @@ public sealed class CheckMarxImporter(RunContext context, CheckMarxClient client
         CancellationToken cancellationToken)
     {
         var total = 0L;
+        var succeeded = 0;
+
+        // Selecting is over, so the number of scans to read is known from here on.
+        context.Status.UpdateStep(Tool, step => step with { Total = scans.Count, Done = 0, Failed = 0 });
 
         for (var index = 0; index < scans.Count; index++)
         {
@@ -211,6 +215,8 @@ public sealed class CheckMarxImporter(RunContext context, CheckMarxClient client
 
                 spool.Close();
                 total += found;
+                var read = ++succeeded;
+                context.Status.UpdateStep(Tool, step => step with { Done = read });
             }
             catch (CheckMarxApiException ex) when (!ex.IsAuthFailure)
             {
@@ -218,6 +224,8 @@ public sealed class CheckMarxImporter(RunContext context, CheckMarxClient client
                 // note it, and carry on with the rest, as the script does. A refused token is different: it stops everything.
                 spool.Rollback(checkpoint);
                 failures.Add(new ScanFailure(scan.Id, scan.ProjectId, scan.ProjectName, ex.Message));
+                var failedSoFar = failures.Count;
+                context.Status.UpdateStep(Tool, step => step with { Failed = failedSoFar });
             }
         }
 
@@ -411,7 +419,8 @@ public sealed class CheckMarxImporter(RunContext context, CheckMarxClient client
         List<ScanFailure> failures,
         CancellationToken cancellationToken)
     {
-        context.Status.UpdateStep(Tool, step => step with { Total = layout.Apps.Count, Message = "writing the file" });
+        context.Status.UpdateStep(Tool, step => step with { Total = layout.Apps.Count, Done = 0, Message = "writing the file" });
+        var written = 0;
 
         var temporary = Path.Combine(
             Path.GetDirectoryName(OutputPath)!,
@@ -452,6 +461,8 @@ public sealed class CheckMarxImporter(RunContext context, CheckMarxClient client
                         cancellationToken.ThrowIfCancellationRequested();
                         await WriteAppAsync(writer, app, selector, spools, knownProjects, cancellationToken);
                         await writer.FlushAsync(cancellationToken);
+                        var appsWritten = ++written;
+                        context.Status.UpdateStep(Tool, step => step with { Done = appsWritten, Message = $"writing the file: {appsWritten} of {layout.Apps.Count} applications" });
                     }
 
                     writer.WriteEndArray();

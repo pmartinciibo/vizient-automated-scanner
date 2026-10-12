@@ -161,13 +161,38 @@ public sealed class ScanPhase
         var reported = context.Repos.Snapshot().Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
         foreach (var repo in context.FoundState.Repos().Where(r => !reported.Contains(r.Key)))
         {
+            var path = MirrorPathHere(context, repo);
+            if (path is not null && path != repo.LocalPath)
+            {
+                context.FoundState.Repoint(repo.Key, path);
+            }
+
             context.Repos.Record(repo with
             {
-                ExistedLocally = RepoSynchronizer.IsMirror(repo.LocalPath),
+                LocalPath = path ?? repo.LocalPath,
+                ExistedLocally = path is not null,
                 ExistedRemotely = false,
                 UpdatedLocally = false
             });
         }
+    }
+
+    /// <summary>
+    /// Where the repo's mirror is on this machine, or null if there is none. The path in the file is tried first. If it is
+    /// not a mirror (the file came from another machine, or the repos root moved), the place RepoClone would put the repo
+    /// under this machine's repos root is tried, then the same with the end of the repo key added, which RepoClone adds
+    /// when two repos would otherwise share a folder.
+    /// </summary>
+    public static string? MirrorPathHere(RunContext context, RepoOutcome repo)
+    {
+        if (RepoSynchronizer.IsMirror(repo.LocalPath))
+        {
+            return repo.LocalPath;
+        }
+
+        var expected = RepoLayout.PathFor(context.Config.ReposRoot, repo.Source, repo.Org, repo.Project, repo.Name);
+        var tail = repo.Key.Length > 8 ? repo.Key[^8..] : repo.Key;
+        return new[] { expected, $"{expected}~{tail}" }.FirstOrDefault(p => RepoSynchronizer.IsMirror(p));
     }
 
     private async Task<List<ScanToolBase>> WaitForMembersAsync(RunContext context, CancellationToken cancellationToken)

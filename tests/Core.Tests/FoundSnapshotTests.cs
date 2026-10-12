@@ -4,6 +4,7 @@ using System.Text.Json;
 using Vizient.AutomatedScanner.Core;
 using Vizient.AutomatedScanner.Core.Configuration;
 using Vizient.AutomatedScanner.Core.Models;
+using Vizient.AutomatedScanner.Core.Scan;
 using Vizient.AutomatedScanner.Core.Serialization;
 using Vizient.AutomatedScanner.Core.State;
 using Vizient.AutomatedScanner.Core.Tools;
@@ -233,6 +234,95 @@ public class FoundSnapshotTests : IDisposable
         Assert.Equal(RepositoryStatus.Active, status["gh-2"]);
     }
 
+    // ---- copies in the runs folder ----
+
+    private static string RunsRoot(string root) => Path.Combine(root, "runs");
+
+    private static async Task WriteSnapshotAsync(string path, FoundOrgAppRepoDocument snapshot)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await AtomicJsonFile.WriteAsync(path, snapshot);
+    }
+
+    private static List<string> Keys(FoundOrgAppRepoDocument snapshot) =>
+        snapshot.ToStoredRepos().Select(r => r.Repo.Key).Order().ToList();
+
+    [Fact]
+    public async Task SaveWritesTheStateTheLatestCopyAndTheRunsOwnCopy()
+    {
+        var store = new FoundOrgAppRepoStore(_stateRoot, RunsRoot(_root), "run-1");
+
+        await store.SaveAsync(Snapshot(Gh("gh-1")));
+
+        Assert.True(File.Exists(Path.Combine(_stateRoot, "FoundOrgAppRepo.json")));
+        Assert.True(File.Exists(Path.Combine(RunsRoot(_root), "FoundOrgAppRepo.json")));
+        Assert.True(File.Exists(Path.Combine(RunsRoot(_root), "run-1", "FoundOrgAppRepo.json")));
+    }
+
+    [Fact]
+    public async Task ANewRunStartsFromTheLatestCopyAndAContinuingRunFromItsOwn()
+    {
+        var first = new FoundOrgAppRepoStore(_stateRoot, RunsRoot(_root), "run-1");
+        await first.SaveAsync(Snapshot(Gh("gh-1")));
+        await WriteSnapshotAsync(first.LatestPath!, Snapshot(Gh("gh-1"), Gh("gh-2")));
+
+        var fresh = await new FoundOrgAppRepoStore(_stateRoot, RunsRoot(_root), "run-2").LoadAsync();
+        var resumed = await new FoundOrgAppRepoStore(_stateRoot, RunsRoot(_root), "run-1", continuingRun: true).LoadAsync();
+
+        Assert.Equal(["gh-1", "gh-2"], Keys(fresh));
+        Assert.Equal(["gh-1"], Keys(resumed));
+    }
+
+    [Fact]
+    public async Task WithNoLatestCopyANewRunFallsBackToTheState()
+    {
+        await new FoundOrgAppRepoStore(_stateRoot).SaveAsync(Snapshot(Gh("gh-1")));
+
+        var loaded = await new FoundOrgAppRepoStore(_stateRoot, RunsRoot(_root), "run-1").LoadAsync();
+
+        Assert.Equal(["gh-1"], Keys(loaded));
+    }
+
+    [Fact]
+    public async Task LoadingGivesANewRunItsOwnCopyOfWhatItStartedFrom()
+    {
+        await new FoundOrgAppRepoStore(_stateRoot).SaveAsync(Snapshot(Gh("gh-1")));
+        var context = await StartRunAsync("run-1");
+
+        await context.FoundState.EnsureLoadedAsync();
+
+        var copy = await AtomicJsonFile.ReadAsync<FoundOrgAppRepoDocument>(Path.Combine(RunsRoot(_root), "run-1", "FoundOrgAppRepo.json"));
+        Assert.Equal(["gh-1"], Keys(copy));
+    }
+
+    // ---- paths from another machine ----
+
+    private static void MakeMirror(string path)
+    {
+        Directory.CreateDirectory(Path.Combine(path, "objects"));
+        File.WriteAllText(Path.Combine(path, "HEAD"), "ref: refs/heads/main");
+    }
+
+    [Fact]
+    public async Task APathFromAnotherMachineIsReplacedByTheMirrorUnderThisMachinesReposRoot()
+    {
+        var context = await StartRunAsync("run-1");
+        var repo = Gh("gh-1", org: "acme") with { LocalPath = @"Z:\elsewhere\GitHubcme\gh-1" };
+        MakeMirror(Path.Combine(_root, "repos", "GitHub", "acme", "gh-1"));
+
+        var path = ScanPhase.MirrorPathHere(context, repo);
+
+        Assert.Equal(Path.Combine(_root, "repos", "GitHub", "acme", "gh-1"), path);
+    }
+
+    [Fact]
+    public async Task ARepoWithNoMirrorOnThisMachineHasNoPath()
+    {
+        var context = await StartRunAsync("run-1");
+
+        Assert.Null(ScanPhase.MirrorPathHere(context, Gh("gh-1") with { LocalPath = @"Z:\elsewhere\gh-1" }));
+    }
+
     // ---- RepoClone loads then saves ----
 
     [Fact]
@@ -309,8 +399,8 @@ public class FoundSnapshotTests : IDisposable
         Assert.True(app.GetProperty("repos")[0].GetProperty("existedPriorToScan").GetBoolean());
         Assert.False(app.GetProperty("repos")[1].GetProperty("existedPriorToScan").GetBoolean());
 
-        // The snapshot is not a run output, so it is not copied into the run folder or beside the request.
-        Assert.False(File.Exists(Path.Combine(context.Paths.RunFolder, FoundOrgAppRepoStore.FileName)));
+        // The run keeps its own copy of the snapshot it started from, in its run folder. Nothing goes beside the request.
+        Assert.True(File.Exists(Path.Combine(context.Paths.RunFolder, FoundOrgAppRepoStore.FileName)));
         Assert.False(File.Exists(Path.Combine(context.Invocation.Directory, FoundOrgAppRepoStore.FileName)));
     }
 

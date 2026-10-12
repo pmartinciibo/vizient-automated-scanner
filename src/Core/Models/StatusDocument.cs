@@ -102,6 +102,13 @@ public sealed record ToolProgress
     public int Canaries { get; init; }
     public int Running { get; init; }
 
+    /// <summary>When the step started and, once every part of it has ended, when it ended. Null before it starts. Filled in when the status is published.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? StartedAt { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? EndedAt { get; init; }
+
     /// <summary>"hh:mm:ss": time since the step started while it runs, the total once it has ended. Filled in when the status is published.</summary>
     public string ElapsedTime { get; init; } = "00:00:00";
 

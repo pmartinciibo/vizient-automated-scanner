@@ -19,6 +19,31 @@ public class ProgressTests : IDisposable
         Assert.Equal(expected, RepoProgress.Text(done, failed, skipped, total, running));
 
     [Fact]
+    public async Task AStepRecordsWhenItStartedAndEndedAndNeverGuessesAnEstimateItCannotMake()
+    {
+        await _world.CloneAsync();
+        var status = _world.Context.Status;
+        ToolProgress Step() => status.PublishedSnapshot().Steps.Single(s => s.Name == ToolNames.RepoClone);
+
+        Assert.Null(Step().StartedAt);
+        Assert.Equal("00:00:00", Step().ElapsedTime);
+
+        status.StepRunning(ToolNames.RepoClone);
+        status.UpdateStep(ToolNames.RepoClone, step => step with { Total = 10, Done = 0, Message = "discovery: 1 of 3 orgs listed" });
+        Assert.NotNull(Step().StartedAt);
+        Assert.Null(Step().EndedAt);
+        Assert.Equal("--:--:--", Step().EstimatedRemainingTime);
+
+        status.UpdateStep(ToolNames.RepoClone, step => step with { Done = 5, Message = null });
+        Assert.Equal(50, Step().PercentComplete);
+        Assert.NotEqual("--:--:--", Step().EstimatedRemainingTime);
+
+        status.CompleteStep(ToolNames.RepoClone);
+        Assert.NotNull(Step().EndedAt);
+        Assert.Equal((100, "00:00:00"), (Step().PercentComplete, Step().EstimatedRemainingTime));
+    }
+
+    [Fact]
     public void ARepoIsLabelledWithItsSourceFirst()
     {
         Assert.Equal("GitHub acme/one", RepoProgress.Label(new RepoOutcome { Source = "GitHub", Org = "acme", Name = "one" }));
