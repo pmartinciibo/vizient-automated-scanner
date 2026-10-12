@@ -21,7 +21,7 @@ public sealed class SnykTool : ProcessScanTool
 
     public override string Name => ToolNames.Snyk;
 
-    protected override string DefaultExe => "snyk-win.exe";
+    protected override string DefaultExe => "snyk";
 
     protected override bool NeedsWorkingCopy(RunContext context) => true;
 

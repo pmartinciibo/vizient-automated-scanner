@@ -245,7 +245,7 @@ public class ScannerToolTests : IDisposable
     }
 
     [Fact]
-    public async Task SnykRunsSnykWinExeUnlessEngineJsonGivesAnExePath()
+    public async Task SnykRunsSnykUnlessEngineJsonGivesAnExePath()
     {
         _world.WithTool("Snyk", t => t with { ExePath = null, Env = new() { ["SNYK_TOKEN"] = "snyk-token" } })
               .AddSecret("snyk-token", SnykToken);
@@ -253,7 +253,7 @@ public class ScannerToolTests : IDisposable
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new SnykTool().RunAsync(_world.Context));
 
-        Assert.Contains("'snyk-win.exe'", error.Message);
+        Assert.Contains("'snyk'", error.Message);
     }
 
     [Fact]
