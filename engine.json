@@ -1,17 +1,18 @@
 {
   "schemaVersion": 3,
   "paths": {
-    "reposRoot": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Repos",
-    "runs": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\runs",
-    "state": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\state",
-    "tmp": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\tmp",
-    "logs": "C:\\envs\\Vizient\\AutomatedScanner\\Integration\\Scanner\\logs"
+    "reposRoot": "D:\\Repos",
+    "runs": "D:\\Scanner\\runs",
+    "state": "D:\\Scanner\\state",
+    "tmp": "D:\\Scanner\\tmp",
+    "logs": "D:\\Scanner\\logs"
   },
-  "statusIntervalSeconds": 5,
+  "statusIntervalSeconds": 2,
   "commandIntervalSeconds": 2,
   "sources": [
-    { "source": "ADO",    "org": "vizientinc",  "tokenSecret": "ado-pat" },
-    { "source": "GitHub", "org": "RnD-Vizient", "tokenSecret": "github-token" }
+    { "source": "ADO", "name": "VizientInc", "org": "vizientinc",  "tokenSecret": "ado-pat" , "orgs": [ "RnD-Vizient", "vizientinc" ]},
+    { "source": "ADO", "name": "ClaroHealthCareADO", "org": "clarohealthcare", "tokenSecret": "clarohealthcare-pat" },
+    { "source": "GitHub", "name": "GitHubRepos", "tokenSecret": "github-token", "includeOwnRepos": false, "orgs": [ "preftech", "aptitudemarketplace", "safeandreliable" ] }
   ],
   "scanArchived": false,
   "skip": { "enabled": true, "canaryPercent": 5, "fullRescanEveryDays": 30 },

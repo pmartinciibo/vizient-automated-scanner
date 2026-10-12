@@ -17,7 +17,37 @@
       "timeoutMinutes": null
     },
     "RepoClone": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null,
+      "sources": {
+        "VizientInc": { "state": "Clone" },
+        "ClaroHealthCareADO": { "state": "Clone" },
+        "GitHubRepos": { "state": "Clone" }
+      }
+    },
+    "TruffleHog": {
       "enabled": true,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "Semgrep": {
+      "enabled": true,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "Snyk": {
+      "enabled": true,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "SonarStandard": {
+      "enabled": false,
+      "maxParallel": null,
+      "timeoutMinutes": null
+    },
+    "SonarDotNet": {
+      "enabled": false,
       "maxParallel": null,
       "timeoutMinutes": null
     }
