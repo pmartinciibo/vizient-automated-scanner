@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
   "runId": "",
-  "revision": 1,
-  "requestedAt": "2026-10-10T12:00:00+00:00",
+  "revision": 3,
+  "requestedAt": "2026-10-13T20:26:00+00:00",
   "requestedBy": "dev",
   "mode": "Normal",
   "tools": {
@@ -42,12 +42,12 @@
       "timeoutMinutes": null
     },
     "SonarStandard": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     },
     "SonarDotNet": {
-      "enabled": false,
+      "enabled": true,
       "maxParallel": null,
       "timeoutMinutes": null
     }

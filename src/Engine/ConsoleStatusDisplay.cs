@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Status;
+using Vizient.AutomatedScanner.Core.Tools;
 
 namespace Vizient.AutomatedScanner.Engine;
 
@@ -99,24 +100,30 @@ public sealed class ConsoleStatusDisplay
 
         // A line that wraps would take two rows and the cursor would climb the wrong distance.
         var lines = new List<string>();
-        foreach (var s in _tracker.PublishedSnapshot().Steps)
+        var snapshot = _tracker.PublishedSnapshot();
+        foreach (var s in snapshot.Steps)
         {
-            lines.Add($"{s.Name,-10} {s.PercentComplete}% ({s.ElapsedTime}/{s.EstimatedRemainingTime}): {s.Message}".TrimEnd());
+            if (s.Name == ToolNames.Scanning && snapshot.Phase is not (RunPhase.Scan or RunPhase.Finalize))
+            {
+                continue;
+            }
+
+            lines.Add($"    {s.Name,-10} {s.PercentComplete}% ({s.ElapsedTime}/{s.EstimatedRemainingTime}): {s.Message}".TrimEnd());
 
             // Under "RepoClone": each sources entry, whether the request has it on, and how its repos are going.
             foreach (var source in s.Sources ?? [])
             {
                 lines.Add(source.Enabled
-                    ? $"  {source.Source} {source.Name} [{source.State}]: {source.KnownRepos} known, {source.Found} found, "
+                    ? $"      {source.Source} {source.Name} [{source.State}]: {source.KnownRepos} known, {source.Found} found, "
                         + $"{source.Done + source.Failed} of {source.Total} cloned/updated ({source.Failed} failed, {source.Skipped} skipped)"
-                    : $"  {source.Source} {source.Name} [off]: {source.KnownRepos} known, not used this run");
+                    : $"      {source.Source} {source.Name} [off]: {source.KnownRepos} known, not used this run");
             }
 
             // Under "Scanning": each scanner that is on, indented, with what it has found so far.
             foreach (var scanner in s.Scanners?.Where(t => t.Status != ToolRunState.Disabled) ?? [])
             {
                 var c = scanner.Severities;
-                lines.Add($"  {scanner.Name}: Critical({c.Critical}) High({c.High}) Moderate({c.Moderate}) Low({c.Low}) Info({c.Information})"
+                lines.Add($"      {scanner.Name}: Critical({c.Critical}) High({c.High}) Moderate({c.Moderate}) Low({c.Low}) Info({c.Information})"
                     + (c.Unmapped > 0 ? $" Unmapped({c.Unmapped})" : string.Empty));
             }
         }

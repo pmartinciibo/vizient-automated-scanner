@@ -117,6 +117,25 @@ public class ProcessRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task RunsBatchFilesWithArgumentsAsSeparateValues()
+    {
+        var batch = Path.Combine(_root, "scanner with spaces.cmd");
+        await File.WriteAllTextAsync(batch, "@echo off\r\necho first=%~1\r\necho second=%~2\r\nexit /b 0\r\n");
+        var spec = new ProcessSpec
+        {
+            FileName = batch,
+            Arguments = ["first value", "second value"],
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+
+        var result = await _runner.RunAsync(spec);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Contains("first=first value", result.StdOut);
+        Assert.Contains("second=second value", result.StdOut);
+    }
+
+    [Fact]
     public async Task WorkingDirectoryAndEnvironmentAreApplied()
     {
         var spec = Cmd("cd & echo %SCAN_TEST_VAR%") with

@@ -1,19 +1,19 @@
 {
   "schemaVersion": 3,
-  "runId": "2026-10-12T12-44-29Z",
-  "revision": 1,
+  "runId": "2026-10-13T20-28-34Z",
+  "revision": 3,
   "attempt": 1,
-  "state": "Stopped",
+  "state": "Completed",
   "paused": false,
-  "pid": 32536,
+  "pid": 26284,
   "mode": "Normal",
-  "startedAt": "2026-10-12T12:44:29.1318752+00:00",
-  "updatedAt": "2026-10-12T13:03:47.6855592+00:00",
-  "endedAt": "2026-10-12T13:03:47.6842379+00:00",
-  "phase": "Scan",
+  "startedAt": "2026-10-13T20:28:34.5896317+00:00",
+  "updatedAt": "2026-10-13T20:29:05.0010442+00:00",
+  "endedAt": "2026-10-13T20:29:04.9996096+00:00",
+  "phase": "Finalize",
   "overall": {
-    "percent": 75,
-    "stepsCompleted": 3,
+    "percent": 100,
+    "stepsCompleted": 4,
     "stepsTotal": 4
   },
   "steps": [
@@ -61,23 +61,25 @@
     },
     {
       "name": "Scanning",
-      "status": "Running",
-      "done": 105,
-      "total": 3044,
-      "failed": 11,
-      "skipped": 1439,
+      "status": "Completed",
+      "done": 1,
+      "total": 1,
+      "failed": 0,
+      "skipped": 4483,
       "canaries": 0,
       "running": 0,
-      "elapsedTime": "00:19:18",
-      "percentComplete": 3,
-      "estimatedRemainingTime": "08:07:20",
+      "startedAt": "2026-10-13T20:28:34.6924469+00:00",
+      "endedAt": "2026-10-13T20:29:04.9862286+00:00",
+      "elapsedTime": "00:00:30",
+      "percentComplete": 100,
+      "estimatedRemainingTime": "00:00:00",
       "scanners": [
         {
           "name": "TruffleHog",
-          "status": "Running",
+          "status": "Disabled",
           "severities": {
             "critical": 0,
-            "high": 722,
+            "high": 0,
             "moderate": 0,
             "low": 0,
             "information": 0,
@@ -86,19 +88,19 @@
         },
         {
           "name": "Semgrep",
-          "status": "Running",
+          "status": "Disabled",
           "severities": {
             "critical": 0,
-            "high": 76,
-            "moderate": 267,
+            "high": 0,
+            "moderate": 0,
             "low": 0,
-            "information": 13,
+            "information": 0,
             "unmapped": 0
           }
         },
         {
           "name": "Snyk",
-          "status": "Failed",
+          "status": "Disabled",
           "severities": {
             "critical": 0,
             "high": 0,
@@ -122,7 +124,7 @@
         },
         {
           "name": "SonarDotNet",
-          "status": "Disabled",
+          "status": "Completed",
           "severities": {
             "critical": 0,
             "high": 0,
@@ -133,32 +135,11 @@
           }
         }
       ],
-      "message": "116 of 3044 repos processed, 11 failed, 1439 skipped | Snyk failed: InvalidOperationException: Snyk: cannot find \u0027snyk\u0027. Install it, put it on the PATH of the account the engine runs as, or set tools.Snyk.exePath in engine.json. | not running: SonarStandard, SonarDotNet"
+      "message": "1 of 1 repos processed, 4483 skipped | not running: TruffleHog, Semgrep, Snyk, SonarStandard"
     }
   ],
   "effective": {},
-  "alerts": [
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "buildtools-account-password",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-12T12:44:29.2031365+00:00"
-    },
-    {
-      "type": "MissingSecret",
-      "tool": null,
-      "repo": null,
-      "name": "snyk-token",
-      "expiresAt": null,
-      "was": null,
-      "now": null,
-      "at": "2026-10-12T12:44:29.2031365+00:00"
-    }
-  ],
+  "alerts": [],
   "lastCommandSeq": 0,
   "commandAcks": []
 }

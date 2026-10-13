@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 
 namespace Vizient.AutomatedScanner.Core.Processes;
 
@@ -174,20 +175,23 @@ public sealed class ProcessRunner : IProcessRunner
 
     private static ProcessStartInfo CreateStartInfo(ProcessSpec spec)
     {
-        var startInfo = new ProcessStartInfo(spec.FileName)
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = new UTF8Encoding(false),
-            StandardErrorEncoding = new UTF8Encoding(false)
-        };
+        var startInfo = IsWindowsBatchFile(spec.FileName)
+            ? CreateBatchStartInfo(spec)
+            : new ProcessStartInfo(spec.FileName);
+        startInfo.UseShellExecute = false;
+        startInfo.CreateNoWindow = true;
+        startInfo.RedirectStandardInput = true;
+        startInfo.RedirectStandardOutput = true;
+        startInfo.RedirectStandardError = true;
+        startInfo.StandardOutputEncoding = new UTF8Encoding(false);
+        startInfo.StandardErrorEncoding = new UTF8Encoding(false);
 
-        foreach (var argument in spec.Arguments)
+        if (!IsWindowsBatchFile(spec.FileName))
         {
-            startInfo.ArgumentList.Add(argument);
+            foreach (var argument in spec.Arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
         }
 
         if (spec.RunAs is { } runAs)
@@ -219,6 +223,33 @@ public sealed class ProcessRunner : IProcessRunner
             startInfo.Environment[name] = value;
         }
 
+        return startInfo;
+    }
+
+    private static bool IsWindowsBatchFile(string fileName) =>
+        OperatingSystem.IsWindows()
+        && Path.GetExtension(fileName) is var extension
+        && (extension.Equals(".bat", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase));
+
+    private static ProcessStartInfo CreateBatchStartInfo(ProcessSpec spec)
+    {
+        var launch = JsonSerializer.Serialize(new { spec.FileName, spec.Arguments });
+        var payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(launch));
+        var script = "$launch = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + payload + "')) | ConvertFrom-Json; "
+            + "$toolArgs = @($launch.Arguments); & $launch.FileName @toolArgs; exit $LASTEXITCODE";
+        var command = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+        var powershell = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        var startInfo = new ProcessStartInfo(powershell);
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-EncodedCommand");
+        startInfo.ArgumentList.Add(command);
         return startInfo;
     }
 
