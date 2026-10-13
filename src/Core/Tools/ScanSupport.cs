@@ -116,14 +116,17 @@ internal static class ScanOutput
         return SeverityMapper.Count(tool, severities);
     }
 
-    /// <summary>Snyk's findings by severity: a SARIF result's "level", or an open source vulnerability's "severity".</summary>
+    /// <summary>
+    /// Snyk's findings by severity. A SARIF result (Snyk Code) goes by its "properties.priorityScore", or by its "level" when
+    /// the score is 0 or missing. An open source vulnerability goes by its "severity".
+    /// </summary>
     public static SeverityCounts SnykSeverities(string path)
     {
         using var stream = File.OpenRead(path);
         using var document = JsonDocument.Parse(stream);
-        var severities = new List<string?>();
+        var counts = new SeverityCounts();
         Collect(document.RootElement);
-        return SeverityMapper.Count(ToolNames.Snyk, severities);
+        return counts;
 
         void Collect(JsonElement element)
         {
@@ -143,19 +146,29 @@ internal static class ScanOutput
                         {
                             if (run.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array)
                             {
-                                severities.AddRange(results.EnumerateArray().Select(r => StringOf(r, "level")));
+                                foreach (var result in results.EnumerateArray())
+                                {
+                                    counts = counts.Plus(SeverityMapper.MapSnykScore(PriorityScoreOf(result), StringOf(result, "level")));
+                                }
                             }
                         }
                     }
                     else if (element.TryGetProperty("vulnerabilities", out var vulns) && vulns.ValueKind == JsonValueKind.Array)
                     {
-                        severities.AddRange(vulns.EnumerateArray().Select(v => StringOf(v, "severity")));
+                        counts = vulns.EnumerateArray().Aggregate(counts, (c, v) => c.Plus(SeverityMapper.Map(ToolNames.Snyk, StringOf(v, "severity"))));
                     }
 
                     break;
             }
         }
     }
+
+    private static double? PriorityScoreOf(JsonElement result) =>
+        result.ValueKind == JsonValueKind.Object
+        && result.TryGetProperty("properties", out var properties) && properties.ValueKind == JsonValueKind.Object
+        && properties.TryGetProperty("priorityScore", out var score) && score.ValueKind == JsonValueKind.Number
+            ? score.GetDouble()
+            : null;
 
     private static string? StringOf(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

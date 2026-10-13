@@ -16,12 +16,16 @@ public static class SeverityMapper
         [ToolNames.SonarStandard] = Sonar(),
         [ToolNames.SonarDotNet] = Sonar(),
 
-        // Dependency scans use critical to low. Snyk Code writes SARIF levels (error, warning, note).
+        // Dependency scans use critical to low. Snyk Code writes SARIF levels, which are only used when a result has no
+        // priority score (see MapSnykScore): error is Critical, warning is Moderate, note is Information.
         [ToolNames.Snyk] = Table(
             ("critical", NormalizedSeverity.Critical),
-            ("high", NormalizedSeverity.High), ("error", NormalizedSeverity.High),
-            ("medium", NormalizedSeverity.Moderate), ("warning", NormalizedSeverity.Moderate),
-            ("low", NormalizedSeverity.Low), ("note", NormalizedSeverity.Low)),
+            ("high", NormalizedSeverity.High),
+            ("medium", NormalizedSeverity.Moderate),
+            ("low", NormalizedSeverity.Low),
+            ("error", NormalizedSeverity.Critical),
+            ("warning", NormalizedSeverity.Moderate),
+            ("note", NormalizedSeverity.Information)),
 
         // Semgrep's own scale, as the business set it: ERROR is Critical, MEDIUM is High, WARNING is Moderate, INFO is Information.
         // The CLI writes ERROR, WARNING and INFO (and MEDIUM for some rules). The other words are kept in case a rule or a newer
@@ -62,6 +66,20 @@ public static class SeverityMapper
     /// </summary>
     public static NormalizedSeverity MapSecret(bool verified) =>
         verified ? NormalizedSeverity.Critical : NormalizedSeverity.High;
+
+    /// <summary>
+    /// A Snyk Code result by its priority score (1 to 1000): 801 and up is Critical, 601 to 800 High, 401 to 600 Moderate,
+    /// 201 to 400 Low, 1 to 200 Information. A score of 0, or none, falls back to the SARIF level (see the Snyk table).
+    /// </summary>
+    public static NormalizedSeverity MapSnykScore(double? score, string? sarifLevel) => score switch
+    {
+        > 800 => NormalizedSeverity.Critical,
+        > 600 => NormalizedSeverity.High,
+        > 400 => NormalizedSeverity.Moderate,
+        > 200 => NormalizedSeverity.Low,
+        > 0 => NormalizedSeverity.Information,
+        _ => Map(ToolNames.Snyk, sarifLevel)
+    };
 
     public static SeverityCounts Count(string tool, IEnumerable<string?> rawSeverities) =>
         rawSeverities.Aggregate(new SeverityCounts(), (counts, raw) => counts.Plus(Map(tool, raw)));

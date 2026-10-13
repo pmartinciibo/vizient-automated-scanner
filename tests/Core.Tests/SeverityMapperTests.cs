@@ -16,9 +16,11 @@ public class SeverityMapperTests
     [InlineData("Semgrep", "MEDIUM", NormalizedSeverity.High)]
     [InlineData("Semgrep", "WARNING", NormalizedSeverity.Moderate)]
     [InlineData("Semgrep", "INFO", NormalizedSeverity.Information)]
-    [InlineData("Snyk", "error", NormalizedSeverity.High)]
+    [InlineData("Snyk", "error", NormalizedSeverity.Critical)]
+    [InlineData("Snyk", "warning", NormalizedSeverity.Moderate)]
     [InlineData("Snyk", "medium", NormalizedSeverity.Moderate)]
-    [InlineData("Snyk", "note", NormalizedSeverity.Low)]
+    [InlineData("Snyk", "note", NormalizedSeverity.Information)]
+    [InlineData("Snyk", "low", NormalizedSeverity.Low)]
     [InlineData("CheckMarx", "Medium", NormalizedSeverity.Moderate)]
     [InlineData("Rapid7", "INFORMATIONAL", NormalizedSeverity.Information)]
     [InlineData("Semgrep", "nonsense", NormalizedSeverity.Unmapped)]
@@ -40,5 +42,30 @@ public class SeverityMapperTests
         var counts = SeverityMapper.Count("Semgrep", ["ERROR", "ERROR", "WARNING", "INFO", "weird"]);
 
         Assert.Equal((2, 0, 1, 0, 1, 1), (counts.Critical, counts.High, counts.Moderate, counts.Low, counts.Information, counts.Unmapped));
+    }
+
+    [Theory]
+    [InlineData(1000, NormalizedSeverity.Critical)]
+    [InlineData(801, NormalizedSeverity.Critical)]
+    [InlineData(800, NormalizedSeverity.High)]
+    [InlineData(601, NormalizedSeverity.High)]
+    [InlineData(600, NormalizedSeverity.Moderate)]
+    [InlineData(401, NormalizedSeverity.Moderate)]
+    [InlineData(400, NormalizedSeverity.Low)]
+    [InlineData(201, NormalizedSeverity.Low)]
+    [InlineData(200, NormalizedSeverity.Information)]
+    [InlineData(1, NormalizedSeverity.Information)]
+    public void ASnykScoreIsBandedAndTheSarifLevelIsIgnored(int score, NormalizedSeverity expected) =>
+        Assert.Equal(expected, SeverityMapper.MapSnykScore(score, "note"));
+
+    [Theory]
+    [InlineData("error", NormalizedSeverity.Critical)]
+    [InlineData("warning", NormalizedSeverity.Moderate)]
+    [InlineData("note", NormalizedSeverity.Information)]
+    [InlineData("nonsense", NormalizedSeverity.Unmapped)]
+    public void ASnykScoreOfZeroOrNoneFallsBackToTheSarifLevel(string level, NormalizedSeverity expected)
+    {
+        Assert.Equal(expected, SeverityMapper.MapSnykScore(0, level));
+        Assert.Equal(expected, SeverityMapper.MapSnykScore(null, level));
     }
 }
