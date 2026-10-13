@@ -84,10 +84,7 @@ public static class EngineSettingsValidator
                     throw Bad($"{where}.tokenSecret is required for GitHub.");
                 }
 
-                if (!seen.Add($"GitHub|{source.TokenSecret.Trim()}"))
-                {
-                    throw Bad($"{where} uses GitHub token secret \"{source.TokenSecret}\" a second time.");
-                }
+                // Several entries may share a token (for example, each naming its own orgs, or with its own request.json state).
 
                 continue;
             }

@@ -34,7 +34,6 @@ public class SourceSettingsTests : IDisposable
     [Theory]
     [InlineData("""[ { "source": "GitHub", "name": "n11", "org": "RnD-Vizient", "tokenSecret": "t" } ]""", "must be left out for GitHub")]
     [InlineData("""[ { "source": "GitHub", "name": "n12" } ]""", "tokenSecret is required for GitHub")]
-    [InlineData("""[ { "source": "GitHub", "name": "n13", "tokenSecret": "t" }, { "source": "GitHub", "name": "n14", "tokenSecret": "t" } ]""", "a second time")]
     [InlineData("""[ { "source": "ADO", "name": "n15", "tokenSecret": "t" } ]""", "needs \"org\", or \"orgs\" for several")]
     [InlineData("""[ { "source": "ADO", "name": "n16", "org": "a", "orgs": ["a"] }, { "source": "ADO", "name": "n17", "orgs": ["b", "a"] } ]""", "org \"a\" a second time")]
     [InlineData("""[ { "source": "ADO", "name": "n18", "org": "a" }, { "source": "ADO", "name": "n19", "org": "a" } ]""", "a second time")]
@@ -44,6 +43,14 @@ public class SourceSettingsTests : IDisposable
 
         Assert.StartsWith("engine.json:", error.Message);
         Assert.Contains(expected, error.Message);
+    }
+
+    [Fact]
+    public async Task GitHubEntriesMayShareOneTokenSecret()
+    {
+        var config = await LoadAsync("""[ { "source": "GitHub", "name": "n22", "tokenSecret": "t" }, { "source": "GitHub", "name": "n23", "tokenSecret": "t", "orgs": ["acme"] } ]""");
+
+        Assert.Equal(2, config.Current.Sources.Count);
     }
 
     [Fact]
