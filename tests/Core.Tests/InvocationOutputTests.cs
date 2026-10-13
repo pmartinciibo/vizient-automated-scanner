@@ -212,4 +212,35 @@ public class InvocationOutputTests : IDisposable
         Assert.Equal(0, file.Items[1].Counts!["scans"]);
         Assert.Equal(3, file.Items[1].Counts!["vulnerabilities"]);
     }
+
+    [Fact]
+    public async Task ResultsListEveryErrorTheRunMet()
+    {
+        await WriteRequestAsync();
+        var context = await RunContext.StartAsync(_config, _requestFile);
+        context.Repos.Record(new RepoOutcome { Key = "gh-1", Source = "GitHub", Org = "acme", Name = "widgets" });
+        await context.Markers.WriteFailedAsync("RepoClone", "gh-1", new ToolFailedMarker { Category = "CloneFailed", Attempts = 2, Message = "fatal: repository not found" });
+        await context.Markers.WriteFailedAsync("Semgrep", "gh-2", new ToolFailedMarker { Category = "Timeout", Attempts = 1, Message = "timed out" });
+        await context.Markers.WriteDoneAsync("Semgrep", "gh-2", new ToolDoneMarker { Sha = "abc" });
+        context.Errors.Record(RunErrorScope.Org, "401 Unauthorized", "RepoClone", "OrgDiscoveryFailed", "ADO", "vizientinc");
+        context.Status.Finish(RunState.Failed);
+        await AtomicJsonFile.WriteAsync(context.Invocation.Status, context.Status.Snapshot());
+
+        await RunResultsWriter.WriteFinalAsync(context, RunState.Failed, 2, "boom");
+
+        var results = await AtomicJsonFile.ReadAsync<ResultsDocument>(context.Invocation.Results);
+        Assert.Equal(3, results.ErrorCount);
+        Assert.Equal(3, results.Errors.Count);
+
+        var repo = Assert.Single(results.Errors, e => e.Scope == "Repo");
+        Assert.Equal(("RepoClone", "CloneFailed", "gh-1", "widgets", "acme", 2), (repo.Tool, repo.Category, repo.Key, repo.Repo, repo.Org, repo.Attempts));
+        Assert.Equal("fatal: repository not found", repo.Message);
+
+        var org = Assert.Single(results.Errors, e => e.Scope == "Org");
+        Assert.Equal(("ADO", "vizientinc"), (org.Source, org.Org));
+
+        // A repo that failed and then succeeded on a retry is not an error any more.
+        Assert.DoesNotContain(results.Errors, e => e.Key == "gh-2");
+        Assert.Equal("boom", Assert.Single(results.Errors, e => e.Scope == "Run").Message);
+    }
 }

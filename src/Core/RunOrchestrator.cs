@@ -78,6 +78,7 @@ public sealed class RunOrchestrator(
             // TODO: redact before this is persisted (failed marker / status alert).
             var error = $"{ex.GetType().Name}: {ex.Message}";
             context.Status.StepFinished(tool.Name, ToolRunState.Failed, error);
+            context.Errors.Record(RunErrorScope.Tool, ex.Message, tool.Name, ex.GetType().Name);
             return new ToolResult(tool.Name, Succeeded: false, error);
         }
     }

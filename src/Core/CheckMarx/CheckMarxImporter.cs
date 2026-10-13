@@ -224,6 +224,7 @@ public sealed class CheckMarxImporter(RunContext context, CheckMarxClient client
                 // note it, and carry on with the rest, as the script does. A refused token is different: it stops everything.
                 spool.Rollback(checkpoint);
                 failures.Add(new ScanFailure(scan.Id, scan.ProjectId, scan.ProjectName, ex.Message));
+                context.Errors.Record(RunErrorScope.Item, $"Scan {scan.Id} of project '{scan.ProjectName ?? scan.ProjectId}': {ex.Message}", Tool, "ScanFailed", key: scan.ProjectId);
                 var failedSoFar = failures.Count;
                 context.Status.UpdateStep(Tool, step => step with { Failed = failedSoFar });
             }

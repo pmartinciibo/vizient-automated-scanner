@@ -55,6 +55,7 @@ try
     if (secretsCheck.FileError is not null)
     {
         Console.Error.WriteLine($"Warning: {secretsCheck.FileError}");
+        context.Errors.Record(RunErrorScope.Secrets, secretsCheck.FileError, category: "SecretsFile");
     }
 
     foreach (var finding in secretsCheck.Findings)
@@ -66,11 +67,13 @@ try
             _ => $"expires on {finding.ExpiresAt:yyyy-MM-dd}"
         };
         Console.Error.WriteLine($"Warning: secret '{finding.Name}' {problem} (needed by {finding.RequiredBy}).");
+        context.Errors.Record(RunErrorScope.Secrets, $"Secret '{finding.Name}' {problem} (needed by {finding.RequiredBy}).", category: finding.Issue.ToString());
     }
 }
 catch (Exception ex) when (ex is IOException or PlatformNotSupportedException)
 {
     Console.Error.WriteLine($"Warning: the secrets could not be checked: {ex.Message}");
+    context.Errors.Record(RunErrorScope.Secrets, $"The secrets could not be checked: {ex.Message}", category: "SecretsCheck");
 }
 
 // Ctrl+C stops the run gracefully so status.json still ends in a terminal state.
@@ -198,6 +201,32 @@ catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 // The last row on the console, after the status display has stopped.
 var elapsed = appTimer.Elapsed;
 Console.WriteLine($"Elapsed: {(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}");
+
+// Then every error condition the run met, as results.json lists them.
+try
+{
+    var runErrors = await RunErrorReport.BuildAsync(context, error);
+    if (runErrors.Count > 0)
+    {
+        const int MaxShown = 50;
+        Console.WriteLine($"Errors ({runErrors.Count}):");
+        foreach (var e in runErrors.Take(MaxShown))
+        {
+            var where = string.Join("/", new[] { e.Tool, e.Source, e.Org, e.Repo ?? e.Key }.Where(part => !string.IsNullOrWhiteSpace(part)));
+            var message = e.Message.ReplaceLineEndings(" ");
+            Console.WriteLine($"  [{e.Scope}{(e.Category is null ? string.Empty : $" {e.Category}")}] {(where.Length > 0 ? where + ": " : string.Empty)}{(message.Length > 200 ? message[..200] + "..." : message)}");
+        }
+
+        if (runErrors.Count > MaxShown)
+        {
+            Console.WriteLine($"  ... and {runErrors.Count - MaxShown} more. All are in results.json.");
+        }
+    }
+}
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    Console.Error.WriteLine($"Could not list the errors: {ex.Message}");
+}
 
 return exitCode;
 

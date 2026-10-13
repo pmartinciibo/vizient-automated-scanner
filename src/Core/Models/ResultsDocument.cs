@@ -27,6 +27,15 @@ public sealed record ResultsDocument
     public ToolOutcome? Scanning { get; init; }
 
     public RepoSummary RepoTotals { get; init; } = new();
+
+    /// <summary>How many error conditions the run met. The same as the length of <see cref="Errors"/>.</summary>
+    public int ErrorCount { get; init; }
+
+    /// <summary>
+    /// Every error condition the run met, oldest first: tools that failed, orgs that could not be listed, repos that
+    /// failed (clone or scan), imports that lost an item, secrets that were missing or expired.
+    /// </summary>
+    public List<RunError> Errors { get; init; } = new();
 }
 
 public sealed record ToolOutcome

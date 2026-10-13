@@ -26,6 +26,8 @@ public static class RunResultsWriter
         var steps = context.Status.Snapshot().Steps;
         await ToolResultsWriter.WriteAllAsync(context, steps, cancellationToken);
 
+        var errors = await RunErrorReport.BuildAsync(context, error, cancellationToken);
+
         var results = new ResultsDocument
         {
             RunId = context.Request.RunId,
@@ -38,7 +40,9 @@ public static class RunResultsWriter
             Error = error,
             Tools = steps.Select(s => ToolOutcome.From(s, ToolResultsWriter.RelativePath(s.Name))).ToList(),
             Scanning = status.Steps.Where(s => s.Name == ToolNames.Scanning).Select(s => ToolOutcome.From(s)).FirstOrDefault(),
-            RepoTotals = RepoSummary.From(repos)
+            RepoTotals = RepoSummary.From(repos),
+            ErrorCount = errors.Count,
+            Errors = errors
         };
 
         await AtomicJsonFile.WriteAsync(context.Invocation.Results, results, cancellationToken);

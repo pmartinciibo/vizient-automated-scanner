@@ -93,6 +93,7 @@ public sealed class RepoCloneTool(
         void Fail(string source, string org, string label, Exception ex)
         {
             failures.Add($"{label}: {Mask(ex.Message)}");
+            context.Errors.Record(RunErrorScope.Org, Mask(ex.Message), Name, "OrgDiscoveryFailed", source, org.Length > 0 ? org : null);
             if (org.Length > 0)
             {
                 orgsFinished++;
@@ -373,7 +374,7 @@ public sealed class RepoCloneTool(
             }
             else
             {
-                MoveIfRenamed(context.Config.ReposRoot, earlier?.LocalPath, path);
+                MoveIfRenamed(context, repo.Source, repo.Org, repo.Key, earlier?.LocalPath, path);
             }
 
             var outcome = new RepoOutcome
@@ -478,8 +479,9 @@ public sealed class RepoCloneTool(
 
     // A renamed repo keeps its history on disk: move the folder instead of cloning it again. Only ever inside the
     // repos root, and never over something that is already there. If the move fails the repo is cloned fresh.
-    private static void MoveIfRenamed(string reposRoot, string? oldPath, string newPath)
+    private void MoveIfRenamed(RunContext context, string source, string org, string key, string? oldPath, string newPath)
     {
+        var reposRoot = context.Config.ReposRoot;
         if (string.IsNullOrWhiteSpace(oldPath)
             || string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase)
             || !Directory.Exists(oldPath)
@@ -496,7 +498,8 @@ public sealed class RepoCloneTool(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Left where it was. The new location is cloned instead.
+            // Left where it was. The new location is cloned instead, but the failed move is reported.
+            context.Errors.Record(RunErrorScope.Repo, $"Could not move the renamed repo's folder from '{oldPath}' to '{newPath}': {Mask(ex.Message)}", Name, "MoveFailed", source, org, key);
         }
     }
 }

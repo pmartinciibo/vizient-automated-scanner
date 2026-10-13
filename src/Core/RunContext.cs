@@ -29,7 +29,8 @@ public sealed record RunContext(
     CommandLog Commands,
     IProcessRunner Processes,
     FoundOrgAppRepoState FoundState,
-    RunSecrets Secrets)
+    RunSecrets Secrets,
+    RunErrorLog Errors)
 {
     /// <summary>
     /// A tool is on unless the request or engine.json turns it off. A request can also turn on a tool that
@@ -113,7 +114,7 @@ public sealed record RunContext(
             await AtomicJsonFile.CopyAsync(requestPath, paths.Request, cancellationToken);
         }
 
-        return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands, new ProcessRunner(), new FoundOrgAppRepoState(new FoundOrgAppRepoStore(config.StateRoot, config.RunsRoot, request.RunId, request.Mode is ScanMode.Resume or ScanMode.RetryFailed), request.RunId), new RunSecrets(config.SecretsFile, config.Current));
+        return new RunContext(config, paths, invocation, requestPath, request, status, new MarkerStore(paths), new RunControl(), new RepoReport(), commands, new ProcessRunner(), new FoundOrgAppRepoState(new FoundOrgAppRepoStore(config.StateRoot, config.RunsRoot, request.RunId, request.Mode is ScanMode.Resume or ScanMode.RetryFailed), request.RunId), new RunSecrets(config.SecretsFile, config.Current), new RunErrorLog(time));
     }
 
     /// <summary>
