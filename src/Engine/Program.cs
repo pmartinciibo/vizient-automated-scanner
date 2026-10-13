@@ -8,6 +8,8 @@ using Vizient.AutomatedScanner.Core.Scan;
 using Vizient.AutomatedScanner.Core.Tools;
 using Vizient.AutomatedScanner.Engine;
 
+var appTimer = System.Diagnostics.Stopwatch.StartNew();
+
 if (args.Length > 0 && args[0] == "secrets")
 {
     return await RunSecretsCommandAsync(args[1..]);
@@ -192,6 +194,10 @@ catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
     Console.Error.WriteLine($"Could not write the final status and results: {ex.Message}");
     exitCode = 2;
 }
+
+// The last row on the console, after the status display has stopped.
+var elapsed = appTimer.Elapsed;
+Console.WriteLine($"Elapsed: {(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}");
 
 return exitCode;
 
