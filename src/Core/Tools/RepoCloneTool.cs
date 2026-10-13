@@ -80,6 +80,25 @@ public sealed class RepoCloneTool(
         var incompleteOrgs = new List<(string Source, string Org)>();
         var failures = new List<string>();
         var stateOfOrg = new Dictionary<string, SourceState>(StringComparer.OrdinalIgnoreCase);
+        var entryOfOrg = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // Every sources entry is shown under the step from the start, with whether the request has it on and how many repos
+        // the last scan knew of it. An entry that names its orgs knows those; one that finds its own orgs knows its source's.
+        string EntryName(SourceSettings entry) => string.IsNullOrWhiteSpace(entry.Name) ? entry.Source : entry.Name!;
+        foreach (var entry in sources)
+        {
+            var named = entry.NamedOrgs();
+            var entryState = context.Request.StateOf(entry.Name);
+            context.Status.SetSource(new SourceProgress
+            {
+                Name = EntryName(entry),
+                Source = entry.Source,
+                State = entryState.ToString(),
+                Enabled = entryState != SourceState.Disabled,
+                KnownRepos = prior.Values.Count(r => r.Source == entry.Source
+                    && (named.Count == 0 || named.Contains(r.OrgName, StringComparer.OrdinalIgnoreCase)))
+            });
+        }
         var listedGitHubOrgs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var listedOrgs = new List<(string Source, string Org)>();
 
@@ -256,6 +275,7 @@ public sealed class RepoCloneTool(
                     cancellationToken.ThrowIfCancellationRequested();
                     listedGitHubOrgs.Add(org);
                     stateOfOrg[$"{SourceSettings.GitHub}|{org}"] = entryState;
+                    entryOfOrg[$"{SourceSettings.GitHub}|{org}"] = EntryName(source);
 
                     try
                     {
@@ -285,6 +305,7 @@ public sealed class RepoCloneTool(
                 cancellationToken.ThrowIfCancellationRequested();
                 var adoOrg = adoOrgName;
                 stateOfOrg[$"{source.Source}|{adoOrg}"] = entryState;
+                entryOfOrg[$"{source.Source}|{adoOrg}"] = EntryName(source);
                 try
                 {
                     IGitCredential credential;
@@ -417,16 +438,52 @@ public sealed class RepoCloneTool(
             settings.LongPaths ?? true);
         var synchronizer = new RepoSynchronizer(context, git, byKey, credentials, clock);
 
-        var work = new RepoWork(
-            synchronizer.SyncAsync,
-            repo => StateOfRepo(repo.Source, repo.Org) == SourceState.ListOnly
-                ? new ToolSkippedMarker { Reason = "ListOnly" }
-                : repo.RemoteStatus switch
+        ToolSkippedMarker? SkipReason(RepoOutcome repo) => StateOfRepo(repo.Source, repo.Org) == SourceState.ListOnly
+            ? new ToolSkippedMarker { Reason = "ListOnly" }
+            : repo.RemoteStatus switch
             {
                 RepositoryStatus.Disabled => new ToolSkippedMarker { Reason = "StatusDisabled" },
                 RepositoryStatus.Archived when !scanArchived => new ToolSkippedMarker { Reason = "StatusArchived" },
                 _ => null
-            });
+            };
+
+        // Per sources entry: what listing found, how many of those are to be cloned or updated, and how they are going.
+        string? EntryOf(RepoOutcome repo) => entryOfOrg.GetValueOrDefault($"{repo.Source}|{repo.Org}");
+        foreach (var group in outcomes.GroupBy(EntryOf).Where(g => g.Key is not null))
+        {
+            var skipped = group.Count(r => SkipReason(r) is not null);
+            context.Status.UpdateSource(group.Key!, entry => entry with { Found = group.Count(), Skipped = skipped, Total = group.Count() - skipped });
+        }
+
+        void Tally(RepoOutcome repo, RepoWorkKind kind)
+        {
+            if (EntryOf(repo) is { } entryName)
+            {
+                context.Status.UpdateSource(entryName, entry => kind switch
+                {
+                    RepoWorkKind.Done => entry with { Done = entry.Done + 1 },
+                    RepoWorkKind.Failed => entry with { Failed = entry.Failed + 1 },
+                    _ => entry with { Skipped = entry.Skipped + 1, Total = Math.Max(0, entry.Total - 1) }
+                });
+            }
+        }
+
+        var work = new RepoWork(
+            async (repoWork, token) =>
+            {
+                try
+                {
+                    var result = await synchronizer.SyncAsync(repoWork, token);
+                    Tally(repoWork.Repo, result.Kind);
+                    return result;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Tally(repoWork.Repo, RepoWorkKind.Failed);
+                    throw;
+                }
+            },
+            SkipReason);
 
         try
         {

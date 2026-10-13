@@ -29,6 +29,7 @@ public sealed class RunStatusTracker
     private RunPhase _phase = RunPhase.Preflight;
     private DateTimeOffset? _endedAt;
     private ScanProgress _scan = ScanProgress.None;
+    private readonly List<SourceProgress> _sources = new();
 
     private RunStatusTracker(
         RunRequestDocument request,
@@ -314,6 +315,36 @@ public sealed class RunStatusTracker
         return $"{(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
     }
 
+    /// <summary>RepoClone says which source entries it has, each shown under its step. A name given again replaces the earlier.</summary>
+    public void SetSource(SourceProgress source)
+    {
+        lock (_gate)
+        {
+            var index = _sources.FindIndex(s => s.Name == source.Name);
+            if (index >= 0)
+            {
+                _sources[index] = source;
+            }
+            else
+            {
+                _sources.Add(source);
+            }
+        }
+    }
+
+    /// <summary>Changes the counts of one source entry, if RepoClone registered it.</summary>
+    public void UpdateSource(string name, Func<SourceProgress, SourceProgress> update)
+    {
+        lock (_gate)
+        {
+            var index = _sources.FindIndex(s => s.Name == name);
+            if (index >= 0)
+            {
+                _sources[index] = update(_sources[index]);
+            }
+        }
+    }
+
     /// <summary>The scan phase reports how many repos it has to scan and how far it has got.</summary>
     public void UpdateScanning(Func<ScanProgress, ScanProgress> update)
     {
@@ -409,7 +440,12 @@ public sealed class RunStatusTracker
     {
         lock (_gate)
         {
-            var steps = ToolNames.All.Select(name => WithTiming(_steps[name], WindowFor(new[] { name }))).ToList();
+            var steps = ToolNames.All
+                .Select(name => WithTiming(_steps[name], WindowFor(new[] { name })))
+                .Select(step => step.Name == ToolNames.RepoClone && _sources.Count > 0 && step.Status != ToolRunState.Disabled
+                    ? step with { Sources = _sources.ToList() }
+                    : step)
+                .ToList();
             var finished = steps.Count(IsFinished);
 
             return new StatusDocument

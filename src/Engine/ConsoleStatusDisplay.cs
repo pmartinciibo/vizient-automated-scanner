@@ -103,6 +103,15 @@ public sealed class ConsoleStatusDisplay
         {
             lines.Add($"{s.Name,-10} {s.PercentComplete}% ({s.ElapsedTime}/{s.EstimatedRemainingTime}): {s.Message}".TrimEnd());
 
+            // Under "RepoClone": each sources entry, whether the request has it on, and how its repos are going.
+            foreach (var source in s.Sources ?? [])
+            {
+                lines.Add(source.Enabled
+                    ? $"  {source.Source} {source.Name} [{source.State}]: {source.KnownRepos} known, {source.Found} found, "
+                        + $"{source.Done + source.Failed} of {source.Total} cloned/updated ({source.Failed} failed, {source.Skipped} skipped)"
+                    : $"  {source.Source} {source.Name} [off]: {source.KnownRepos} known, not used this run");
+            }
+
             // Under "Scanning": each scanner that is on, indented, with what it has found so far.
             foreach (var scanner in s.Scanners?.Where(t => t.Status != ToolRunState.Disabled) ?? [])
             {

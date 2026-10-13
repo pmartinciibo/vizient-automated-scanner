@@ -608,6 +608,23 @@ public class RepoCloneTests : IDisposable
     }
 
     [Fact]
+    public async Task EachSourcesEntryIsShownUnderTheStepWithItsReposAndProgress()
+    {
+        var origins = new Dictionary<string, FakeOrigin> { ["alpha"] = _run.Origin("a"), ["beta"] = _run.Origin("b") };
+
+        var context = await _run.RunAsync(OrgsWithRepos(origins));
+
+        var step = context.Status.Snapshot().Steps.Single(s => s.Name == "RepoClone");
+        var entry = Assert.Single(step.Sources!);
+        Assert.True(entry.Enabled);
+        Assert.Equal("Clone", entry.State);
+        Assert.Equal(2, entry.Found);
+        Assert.Equal(2, entry.Total);
+        Assert.Equal(2, entry.Done);
+        Assert.Equal(0, entry.Failed);
+    }
+
+    [Fact]
     public async Task MoreThanAHundredOrgsAreAllDiscovered()
     {
         var last = _run.Origin("last");

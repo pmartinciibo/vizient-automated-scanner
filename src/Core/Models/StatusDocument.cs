@@ -126,7 +126,40 @@ public sealed record ToolProgress
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public List<ScannerProgress>? Scanners { get; init; }
 
+    /// <summary>On the "RepoClone" step only: each source entry in engine.json, with whether it is on and how its repos are going.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<SourceProgress>? Sources { get; init; }
+
     public string? Message { get; init; }
+}
+
+/// <summary>One sources entry of engine.json as RepoClone sees it this run.</summary>
+public sealed record SourceProgress
+{
+    /// <summary>The entry's name (what request.json calls it).</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>ADO or GitHub.</summary>
+    public string Source { get; init; } = string.Empty;
+
+    /// <summary>Clone, ListOnly or Disabled, from request.json.</summary>
+    public string State { get; init; } = string.Empty;
+
+    /// <summary>False for a Disabled entry: nothing is listed or cloned for it.</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>Repos of this entry the last scan knew.</summary>
+    public int KnownRepos { get; init; }
+
+    /// <summary>Repos found by listing this run. Zero until the listing has got to the entry.</summary>
+    public int Found { get; init; }
+
+    /// <summary>Repos to clone or update this run (found, less those skipped).</summary>
+    public int Total { get; init; }
+
+    public int Done { get; init; }
+    public int Failed { get; init; }
+    public int Skipped { get; init; }
 }
 
 public sealed record ScannerProgress
