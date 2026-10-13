@@ -67,7 +67,7 @@ internal static class ScanOutput
                 : throw new InvalidDataException($"The output has no \"{property}\" list.");
     }
 
-    /// <summary>TruffleHog's findings by severity: a line each, verified or not.</summary>
+    /// <summary>TruffleHog's findings by severity: a line each, and every one is High, verified or not.</summary>
     public static SeverityCounts TruffleHogSeverities(string path)
     {
         var counts = new SeverityCounts();
@@ -76,10 +76,7 @@ internal static class ScanOutput
             try
             {
                 using var document = JsonDocument.Parse(line);
-                var verified = document.RootElement.ValueKind == JsonValueKind.Object
-                    && document.RootElement.TryGetProperty("Verified", out var v)
-                    && v.ValueKind == JsonValueKind.True;
-                counts = counts.Plus(SeverityMapper.MapSecret(verified));
+                counts = counts.Plus(SeverityMapper.MapSecret());
             }
             catch (JsonException)
             {
@@ -103,22 +100,31 @@ internal static class ScanOutput
     }
 
     /// <summary>
-    /// Sonar's findings by severity, from the file CollectAsync wrote ({ project, total, issues }). The classic "severity"
-    /// is used. Newer servers also say "impacts", which this does not read.
+    /// Sonar's findings by severity, from the file CollectAsync wrote ({ project, total, issues }). An issue that has
+    /// "impacts" (newer servers) goes by the highest of them; one without goes by its classic "severity".
     /// </summary>
     public static SeverityCounts SonarSeverities(string tool, string path)
     {
         using var stream = File.OpenRead(path);
         using var document = JsonDocument.Parse(stream);
-        var severities = document.RootElement.TryGetProperty("issues", out var issues) && issues.ValueKind == JsonValueKind.Array
-            ? issues.EnumerateArray().Select(i => StringOf(i, "severity")).ToList()
-            : [];
-        return SeverityMapper.Count(tool, severities);
+        var counts = new SeverityCounts();
+        if (document.RootElement.TryGetProperty("issues", out var issues) && issues.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var issue in issues.EnumerateArray())
+            {
+                var impacts = issue.ValueKind == JsonValueKind.Object && issue.TryGetProperty("impacts", out var list) && list.ValueKind == JsonValueKind.Array
+                    ? list.EnumerateArray().Select(i => StringOf(i, "severity")).ToList()
+                    : [];
+                counts = counts.Plus(SeverityMapper.MapSonar(tool, impacts, StringOf(issue, "severity")));
+            }
+        }
+
+        return counts;
     }
 
     /// <summary>
-    /// Snyk's findings by severity. A SARIF result (Snyk Code) goes by its "properties.priorityScore", or by its "level" when
-    /// the score is 0 or missing. An open source vulnerability goes by its "severity".
+    /// Snyk's findings by severity. A SARIF result (Snyk Code) goes by its "level" (error, warning, note), and an open source
+    /// vulnerability by its own "severity", not its priority score. Anything else, or none, is Moderate.
     /// </summary>
     public static SeverityCounts SnykSeverities(string path)
     {
@@ -148,7 +154,7 @@ internal static class ScanOutput
                             {
                                 foreach (var result in results.EnumerateArray())
                                 {
-                                    counts = counts.Plus(SeverityMapper.MapSnykScore(PriorityScoreOf(result), StringOf(result, "level")));
+                                    counts = counts.Plus(SeverityMapper.Map(ToolNames.Snyk, StringOf(result, "level")));
                                 }
                             }
                         }
@@ -162,13 +168,6 @@ internal static class ScanOutput
             }
         }
     }
-
-    private static double? PriorityScoreOf(JsonElement result) =>
-        result.ValueKind == JsonValueKind.Object
-        && result.TryGetProperty("properties", out var properties) && properties.ValueKind == JsonValueKind.Object
-        && properties.TryGetProperty("priorityScore", out var score) && score.ValueKind == JsonValueKind.Number
-            ? score.GetDouble()
-            : null;
 
     private static string? StringOf(JsonElement element, string property) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

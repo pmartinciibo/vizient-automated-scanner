@@ -3,40 +3,42 @@ using Vizient.AutomatedScanner.Core.Models;
 namespace Vizient.AutomatedScanner.Core.Tools;
 
 /// <summary>
-/// Maps each scanner's own severity words onto Critical, High, Moderate, Low and Information. For the downstream
-/// consumer: the raw results keep the tool's own value, and only the counts in the status use this. A value it does not
-/// know is <see cref="NormalizedSeverity.Unmapped"/>, never a guess.
+/// Maps each scanner's own severity words onto Critical, High, Moderate (Medium), Low and Information (Info). For the
+/// downstream consumer: the raw results keep the tool's own value, and only the counts in the status use this. For most
+/// tools a value it does not know is <see cref="NormalizedSeverity.Unmapped"/>, never a guess; Snyk and Semgrep are the
+/// exception, where it is Moderate (see <see cref="DefaultsToModerate"/>).
 /// </summary>
 public static class SeverityMapper
 {
-    // Per tool, because the same word means different things: Sonar's CRITICAL is High, Semgrep's ERROR is Critical.
+    // Tools whose unlisted severities (and missing ones) count as Moderate, as the business decided.
+    private static readonly HashSet<string> DefaultsToModerate = new(StringComparer.Ordinal)
+    {
+        ToolNames.Snyk,
+        ToolNames.Semgrep
+    };
+
+    // Per tool, because the same word means different things: Sonar's legacy CRITICAL is High.
     private static readonly Dictionary<string, Dictionary<string, NormalizedSeverity>> Tables = new(StringComparer.Ordinal)
     {
-        // SonarQube's classic scale, and the newer impact levels.
+        // The newer impact levels (BLOCKER, HIGH, MEDIUM, LOW, INFO) and the legacy ones (BLOCKER, CRITICAL, MAJOR, MINOR, INFO).
+        // Only CRITICAL differs from what the word suggests: it is High, never Critical. See MapSonar for which is read.
         [ToolNames.SonarStandard] = Sonar(),
         [ToolNames.SonarDotNet] = Sonar(),
 
-        // Dependency scans use critical to low. Snyk Code writes SARIF levels, which are only used when a result has no
-        // priority score (see MapSnykScore): error is Critical, warning is Moderate, note is Information.
+        // Open source: Snyk's own severity as it is. Snyk Code: the SARIF level, with no Critical.
         [ToolNames.Snyk] = Table(
             ("critical", NormalizedSeverity.Critical),
-            ("high", NormalizedSeverity.High),
-            ("medium", NormalizedSeverity.Moderate),
-            ("low", NormalizedSeverity.Low),
-            ("error", NormalizedSeverity.Critical),
-            ("warning", NormalizedSeverity.Moderate),
-            ("note", NormalizedSeverity.Information)),
+            ("high", NormalizedSeverity.High), ("error", NormalizedSeverity.High),
+            ("medium", NormalizedSeverity.Moderate), ("warning", NormalizedSeverity.Moderate),
+            ("low", NormalizedSeverity.Low), ("note", NormalizedSeverity.Low)),
 
-        // Semgrep's own scale, as the business set it: ERROR is Critical, MEDIUM is High, WARNING is Moderate, INFO is Information.
-        // The CLI writes ERROR, WARNING and INFO (and MEDIUM for some rules). The other words are kept in case a rule or a newer
-        // version uses them.
+        // No Critical. Anything else Semgrep says (MEDIUM, CRITICAL, INVENTORY, ...) is Moderate.
         [ToolNames.Semgrep] = Table(
-            ("critical", NormalizedSeverity.Critical), ("error", NormalizedSeverity.Critical),
-            ("high", NormalizedSeverity.High), ("medium", NormalizedSeverity.High),
+            ("error", NormalizedSeverity.High),
             ("warning", NormalizedSeverity.Moderate),
-            ("low", NormalizedSeverity.Low),
-            ("info", NormalizedSeverity.Information)),
+            ("info", NormalizedSeverity.Low)),
 
+        // The portal's own severity, as it is.
         [ToolNames.CheckMarx] = Table(
             ("critical", NormalizedSeverity.Critical),
             ("high", NormalizedSeverity.High),
@@ -53,33 +55,30 @@ public static class SeverityMapper
     };
 
     /// <summary>The normalized severity of a finding the tool called <paramref name="raw"/>. Case does not matter.</summary>
-    public static NormalizedSeverity Map(string tool, string? raw) =>
-        raw is not null
-        && Tables.TryGetValue(tool, out var table)
-        && table.TryGetValue(raw.Trim().ToLowerInvariant(), out var severity)
-            ? severity
-            : NormalizedSeverity.Unmapped;
-
-    /// <summary>
-    /// TruffleHog has no severity, only whether a secret was verified as live. A verified one is Critical. One that is
-    /// not verified (verification is off unless engine.json turns it on) is High: a secret in a repo is serious either way.
-    /// </summary>
-    public static NormalizedSeverity MapSecret(bool verified) =>
-        verified ? NormalizedSeverity.Critical : NormalizedSeverity.High;
-
-    /// <summary>
-    /// A Snyk Code result by its priority score (1 to 1000): 801 and up is Critical, 601 to 800 High, 401 to 600 Moderate,
-    /// 201 to 400 Low, 1 to 200 Information. A score of 0, or none, falls back to the SARIF level (see the Snyk table).
-    /// </summary>
-    public static NormalizedSeverity MapSnykScore(double? score, string? sarifLevel) => score switch
+    public static NormalizedSeverity Map(string tool, string? raw)
     {
-        > 800 => NormalizedSeverity.Critical,
-        > 600 => NormalizedSeverity.High,
-        > 400 => NormalizedSeverity.Moderate,
-        > 200 => NormalizedSeverity.Low,
-        > 0 => NormalizedSeverity.Information,
-        _ => Map(ToolNames.Snyk, sarifLevel)
-    };
+        if (raw is not null && Tables.TryGetValue(tool, out var table) && table.TryGetValue(raw.Trim().ToLowerInvariant(), out var severity))
+        {
+            return severity;
+        }
+
+        return DefaultsToModerate.Contains(tool) ? NormalizedSeverity.Moderate : NormalizedSeverity.Unmapped;
+    }
+
+    /// <summary>
+    /// A Sonar issue's severity: the highest of its impact severities when it has any the mapping knows (an issue can have
+    /// one per software quality), otherwise its legacy severity.
+    /// </summary>
+    public static NormalizedSeverity MapSonar(string tool, IEnumerable<string?> impactSeverities, string? legacySeverity)
+    {
+        var impacts = impactSeverities.Select(i => Map(tool, i)).Where(s => s != NormalizedSeverity.Unmapped).ToList();
+
+        // The enum runs from Critical down, so the lowest value is the most severe.
+        return impacts.Count > 0 ? impacts.Min() : Map(tool, legacySeverity);
+    }
+
+    /// <summary>TruffleHog has no severity. Every secret found is High, verified or not.</summary>
+    public static NormalizedSeverity MapSecret() => NormalizedSeverity.High;
 
     public static SeverityCounts Count(string tool, IEnumerable<string?> rawSeverities) =>
         rawSeverities.Aggregate(new SeverityCounts(), (counts, raw) => counts.Plus(Map(tool, raw)));
