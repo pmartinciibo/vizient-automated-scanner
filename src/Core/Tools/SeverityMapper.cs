@@ -9,7 +9,7 @@ namespace Vizient.AutomatedScanner.Core.Tools;
 /// </summary>
 public static class SeverityMapper
 {
-    // Per tool, because the same word means different things: Sonar's CRITICAL is High, Semgrep's is Critical.
+    // Per tool, because the same word means different things: Sonar's CRITICAL is High, Semgrep's ERROR is Critical.
     private static readonly Dictionary<string, Dictionary<string, NormalizedSeverity>> Tables = new(StringComparer.Ordinal)
     {
         // SonarQube's classic scale, and the newer impact levels.
@@ -23,11 +23,13 @@ public static class SeverityMapper
             ("medium", NormalizedSeverity.Moderate), ("warning", NormalizedSeverity.Moderate),
             ("low", NormalizedSeverity.Low), ("note", NormalizedSeverity.Low)),
 
-        // Older rules say ERROR, WARNING, INFO. Newer ones say CRITICAL to LOW.
+        // Semgrep's own scale, as the business set it: ERROR is Critical, MEDIUM is High, WARNING is Moderate, INFO is Information.
+        // The CLI writes ERROR, WARNING and INFO (and MEDIUM for some rules). The other words are kept in case a rule or a newer
+        // version uses them.
         [ToolNames.Semgrep] = Table(
-            ("critical", NormalizedSeverity.Critical),
-            ("high", NormalizedSeverity.High), ("error", NormalizedSeverity.High),
-            ("medium", NormalizedSeverity.Moderate), ("warning", NormalizedSeverity.Moderate),
+            ("critical", NormalizedSeverity.Critical), ("error", NormalizedSeverity.Critical),
+            ("high", NormalizedSeverity.High), ("medium", NormalizedSeverity.High),
+            ("warning", NormalizedSeverity.Moderate),
             ("low", NormalizedSeverity.Low),
             ("info", NormalizedSeverity.Information)),
 

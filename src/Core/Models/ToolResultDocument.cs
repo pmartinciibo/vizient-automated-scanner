@@ -33,7 +33,15 @@ public sealed record ToolItemResult
 {
     public string Key { get; init; } = string.Empty;
 
-    /// <summary>Done, Failed, Skipped, or Unreadable when the marker could not be read.</summary>
+    /// <summary>An imported application's name.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; init; }
+
+    /// <summary>An imported application's record counts by list (scans, vulnerabilities, projects, results and so on).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, int>? Counts { get; init; }
+
+    /// <summary>Done, Failed, Skipped, Imported (an application in an import's file), or Unreadable when the marker or file could not be read.</summary>
     public string Outcome { get; init; } = string.Empty;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

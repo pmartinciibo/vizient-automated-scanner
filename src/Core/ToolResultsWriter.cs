@@ -1,6 +1,9 @@
 using System.Text.Json;
+using Vizient.AutomatedScanner.Core.CheckMarx;
+using Vizient.AutomatedScanner.Core.Imports;
 using Vizient.AutomatedScanner.Core.IO;
 using Vizient.AutomatedScanner.Core.Models;
+using Vizient.AutomatedScanner.Core.Rapid7;
 using Vizient.AutomatedScanner.Core.Serialization;
 using Vizient.AutomatedScanner.Core.Tools;
 
@@ -44,8 +47,30 @@ public static class ToolResultsWriter
             Import = isImport ? await ReadImportAsync(context.Paths.ImportDoneMarker(tool), cancellationToken) : null,
             RepoTotals = isRepoClone ? RepoSummary.From(context.Repos.Snapshot()) : null,
             Orgs = isRepoClone ? [.. context.Repos.Orgs()] : null,
-            Items = await ReadItemsAsync(context.Paths.ResultsDir(tool), cancellationToken)
+            Items = [.. isImport ? ReadImportedApps(context.Paths.ResultFile(tool, ImportKey(tool))) : [],
+                .. await ReadItemsAsync(context.Paths.ResultsDir(tool), cancellationToken)]
         };
+    }
+
+    private static string ImportKey(string tool) => tool == ToolNames.Rapid7 ? Rapid7Importer.OutputKey : CheckMarxImporter.OutputKey;
+
+    // An import has no per-repo markers. Its record of what happened is the one raw file, summarised here by application
+    // (the file itself can be gigabytes and is not copied into this one).
+    private static List<ToolItemResult> ReadImportedApps(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        try
+        {
+            return ImportFileSummarizer.Summarize(path);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return [new ToolItemResult { Key = Path.GetFileName(path), Outcome = "Unreadable" }];
+        }
     }
 
     private static async Task<ImportDoneMarker?> ReadImportAsync(string path, CancellationToken cancellationToken)

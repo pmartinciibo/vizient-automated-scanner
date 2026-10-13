@@ -183,4 +183,33 @@ public class InvocationOutputTests : IDisposable
         Assert.Equal(1, status.Attempt);
         Assert.Equal(0, status.LastCommandSeq);
     }
+
+    [Fact]
+    public async Task AnImportsStepFileListsItsApplicationsWithRecordCounts()
+    {
+        await WriteRequestAsync();
+        var context = await RunContext.StartAsync(_config, _requestFile);
+        Directory.CreateDirectory(context.Paths.ResultsDir("Rapid7"));
+        // Bigger than the 1 MB read buffer, so the file is read in pieces.
+        var padding = new string('x', 1_500_000);
+        await File.WriteAllTextAsync(
+            context.Paths.ResultFile("Rapid7", "rapid7"),
+            "{\"generatedAt\":\"t\",\"apps\":[" +
+            "{\"id\":\"a1\",\"name\":\"Alpha\",\"scans\":[{\"id\":1},{\"id\":2}],\"vulnerabilities\":[{\"d\":\"" + padding + "\",\"n\":[1,2]}]}," +
+            "{\"id\":null,\"scans\":[],\"vulnerabilities\":[{},{},{}]}]}");
+        context.Status.Finish(RunState.Completed);
+        await AtomicJsonFile.WriteAsync(context.Invocation.Status, context.Status.Snapshot());
+
+        await RunResultsWriter.WriteFinalAsync(context, RunState.Completed, 0, null);
+
+        var file = await AtomicJsonFile.ReadAsync<ToolResultDocument>(context.Paths.ToolResult("Rapid7"));
+        Assert.Equal(2, file.Items.Count);
+        Assert.Equal("a1", file.Items[0].Key);
+        Assert.Equal("Alpha", file.Items[0].Name);
+        Assert.Equal(2, file.Items[0].Counts!["scans"]);
+        Assert.Equal(1, file.Items[0].Counts!["vulnerabilities"]);
+        Assert.Equal("(unassigned)", file.Items[1].Key);
+        Assert.Equal(0, file.Items[1].Counts!["scans"]);
+        Assert.Equal(3, file.Items[1].Counts!["vulnerabilities"]);
+    }
 }

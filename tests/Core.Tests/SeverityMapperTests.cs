@@ -12,7 +12,8 @@ public class SeverityMapperTests
     [InlineData("SonarStandard", "MINOR", NormalizedSeverity.Low)]
     [InlineData("SonarStandard", "INFO", NormalizedSeverity.Information)]
     [InlineData("Semgrep", "CRITICAL", NormalizedSeverity.Critical)]
-    [InlineData("Semgrep", "ERROR", NormalizedSeverity.High)]
+    [InlineData("Semgrep", "ERROR", NormalizedSeverity.Critical)]
+    [InlineData("Semgrep", "MEDIUM", NormalizedSeverity.High)]
     [InlineData("Semgrep", "WARNING", NormalizedSeverity.Moderate)]
     [InlineData("Semgrep", "INFO", NormalizedSeverity.Information)]
     [InlineData("Snyk", "error", NormalizedSeverity.High)]
@@ -38,6 +39,6 @@ public class SeverityMapperTests
     {
         var counts = SeverityMapper.Count("Semgrep", ["ERROR", "ERROR", "WARNING", "INFO", "weird"]);
 
-        Assert.Equal((0, 2, 1, 0, 1, 1), (counts.Critical, counts.High, counts.Moderate, counts.Low, counts.Information, counts.Unmapped));
+        Assert.Equal((2, 0, 1, 0, 1, 1), (counts.Critical, counts.High, counts.Moderate, counts.Low, counts.Information, counts.Unmapped));
     }
 }
