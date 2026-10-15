@@ -61,9 +61,15 @@ public sealed record ToolScanKey(string ScanMode, string ToolVersion, string Rul
 
         if (tool == ToolNames.SonarDotNet)
         {
-            text.Append("buildStrategy=project-aware-v1\n")
+            var standardScanner = config.Current.Tool(ToolNames.SonarStandard);
+            text.Append("buildStrategy=project-aware-v2\n")
                 .Append("dotnetPath=").Append(settings.DotnetPath ?? "dotnet").Append('\n')
                 .Append("msbuildPath=").Append(settings.MsbuildPath ?? "auto").Append('\n');
+            text.Append("msbuildScannerPath=").Append(settings.MsbuildScannerPath ?? "auto").Append('\n')
+                .Append("msbuildScannerVersion=").Append(settings.MsbuildScannerVersion ?? "unset").Append('\n')
+                .Append("fallbackToStandardScanner=").Append(settings.FallbackToStandardScanner?.ToString() ?? "true").Append('\n')
+                .Append("standardScannerPath=").Append(standardScanner.ExePath ?? "sonar-scanner").Append('\n')
+                .Append("standardScannerVersion=").Append(standardScanner.Version ?? "unset").Append('\n');
         }
 
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));

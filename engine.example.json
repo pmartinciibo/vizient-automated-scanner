@@ -83,6 +83,7 @@
       "enabled": true,
       "maxParallel": 4,
       "timeoutMinutes": 60,
+<<<<<<< HEAD
       "exePath": "C:\\Tools\\dotnet-tools\\dotnet-sonarscanner.exe",
       "dotnetPath": "C:\\Program Files\\dotnet\\dotnet.exe",
       "msbuildScannerPath": "C:\\Tools\\sonar-scanner-msbuild\\11.3.0.1175\\SonarScanner.MSBuild.exe",
@@ -90,6 +91,13 @@
       "fallbackToStandardScanner": true,
       "version": "11.3.0",
       "rulesVersion": "profile-2026-10-01",
+=======
+      "version": "10.x",
+      "rulesVersion": "profile-example",
+      "msbuildScannerPath": "C:\\Tools\\sonar-scanner-msbuild\\SonarScanner.MSBuild.exe",
+      "msbuildScannerVersion": "11.3",
+      "fallbackToStandardScanner": true,
+>>>>>>> ecdf912e9417b82f57c2e4840d2f3815a3a1b6be
       "serverUrl": "http://localhost:9000",
       "env": { "SONAR_TOKEN": "sonar_token" },
       "runAs": { "account": "ADFW5P02SEC\\sonarqube", "passwordSecret": "buildtools-account-password" }

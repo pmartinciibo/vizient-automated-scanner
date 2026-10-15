@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
-  "runId": "2026-10-13T20-28-34Z",
-  "requestFile": "C:\\Tools\\Projects\\vizient-automated-scanner\\request.json",
-  "runDirectory": "d:\\Scanner\\runs\\2026-10-13T20-28-34Z",
+  "runId": "2026-10-15T02-21-38Z",
+  "requestFile": "C:\\Tools\\Projects\\vizient-automated-scanner\\msb3644-test.request.json",
+  "runDirectory": "d:\\Scanner\\runs\\2026-10-15T02-21-38Z",
   "state": "Completed",
   "exitCode": 0,
-  "startedAt": "2026-10-13T20:28:34.5896317+00:00",
-  "endedAt": "2026-10-13T20:29:04.9996096+00:00",
+  "startedAt": "2026-10-15T02:21:38.496821+00:00",
+  "endedAt": "2026-10-15T02:21:42.8054702+00:00",
   "error": null,
   "tools": [
     {
@@ -95,15 +95,15 @@
     },
     {
       "name": "SonarDotNet",
-      "status": "Completed",
+      "status": "CompletedWithFlags",
       "message": null,
-      "startedAt": "2026-10-13T20:28:34.6924469+00:00",
-      "endedAt": "2026-10-13T20:29:04.9862286+00:00",
-      "elapsedTime": "00:00:30",
+      "startedAt": "2026-10-15T02:21:38.6004006+00:00",
+      "endedAt": "2026-10-15T02:21:42.7958817+00:00",
+      "elapsedTime": "00:00:04",
       "total": 1,
-      "done": 1,
-      "failed": 0,
-      "skipped": 4483,
+      "done": 0,
+      "failed": 1,
+      "skipped": 134,
       "canaries": 0,
       "severities": {
         "critical": 0,
@@ -118,24 +118,38 @@
   ],
   "scanning": {
     "name": "Scanning",
-    "status": "Completed",
-    "message": "1 of 1 repos processed, 4483 skipped | not running: TruffleHog, Semgrep, Snyk, SonarStandard",
-    "startedAt": "2026-10-13T20:28:34.6924469+00:00",
-    "endedAt": "2026-10-13T20:29:04.9862286+00:00",
-    "elapsedTime": "00:00:30",
+    "status": "CompletedWithFlags",
+    "message": "1 of 1 repos processed, 1 failed, 134 skipped | not running: TruffleHog, Semgrep, Snyk, SonarStandard",
+    "startedAt": "2026-10-15T02:21:38.6004006+00:00",
+    "endedAt": "2026-10-15T02:21:42.7958817+00:00",
+    "elapsedTime": "00:00:04",
     "total": 1,
-    "done": 1,
-    "failed": 0,
-    "skipped": 4483,
+    "done": 0,
+    "failed": 1,
+    "skipped": 134,
     "canaries": 0
   },
   "repoTotals": {
-    "total": 4484,
-    "existedLocally": 3052,
+    "total": 5593,
+    "existedLocally": 4080,
     "existedRemotely": 0,
     "updatedLocally": 0,
-    "archivedOrRetired": 1434
+    "archivedOrRetired": 1519
   },
-  "errorCount": 0,
-  "errors": []
+  "errorCount": 1,
+  "errors": [
+    {
+      "scope": "Repo",
+      "at": "2026-10-15T02:21:42.4421817+00:00",
+      "tool": "SonarDotNet",
+      "category": "BuildFailed",
+      "message": "exited with code 1 | Determining projects to restore...    Nothing to do. None of the projects specified contain packages to restore.  d:\\Scanner\\tmp\\expanded\\2026-10-15T02-21-38Z\\ado-076eab81-5954-4724-b6f5-cb50a6d354c3\\source\\src\\net\\VstdEngine\\SCDMS_Vstd.vbproj(228,5): error : This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is ..\\..\\..\\packages\\OctoPack.3.6.3\\build\\OctoPack.targets.",
+      "source": "ADO",
+      "org": "vizientinc",
+      "project": "MDM",
+      "key": "ado-076eab81-5954-4724-b6f5-cb50a6d354c3",
+      "repo": "VendorStd",
+      "attempts": 1
+    }
+  ]
 }

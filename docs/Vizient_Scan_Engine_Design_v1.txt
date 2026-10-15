@@ -760,15 +760,21 @@ It is small by design. Per-repo detail lives in the marker files.
   TOOL 8 - SonarDotNet (.NET repos)
    Applies to: in-scope repos WITH a .sln or .csproj file (these repos are NOT
                also sent to SonarStandard)
-   Action:     dotnet sonarscanner begin; build SDK-style projects with
-               dotnet build and legacy/non-SDK projects with Visual Studio
-               MSBuild.exe; dotnet sonarscanner end. The build runs under the
-               locked-down account, then the engine waits for the analysis task
-               and fetches the issues as above. MSBuild is discovered with
-               vswhere; tools.SonarDotNet.msbuildPath can override it.
+   Action:     SDK-style projects without COM references use dotnet-sonarscanner
+               and dotnet build; legacy projects and projects with COM references
+               use SonarScanner.MSBuild.exe and Visual Studio MSBuild.exe. MSBuild
+               is discovered with vswhere. The Framework scanner and MSBuild paths can be set with
+               tools.SonarDotNet.msbuildScannerPath and msbuildPath. Builds
+               run under the locked-down account. If a build fails, the engine
+               defaults to a SonarScanner CLI run without a build (shallow
+               .NET analysis), using SonarStandard's environment and runAs
+               settings; set fallbackToStandardScanner=false to disable.
+               The build's redacted stdout/stderr are retained in the run's
+               logs\SonarDotNet folder and referenced by its marker.
+               SSIS-only repos are skipped as NotApplicable.
    Output:     results\SonarDotNet\<repoKey>.json and markers
-   Failure:    restore or build failures give .failed.json (BuildFailed);
-               the repo is NOT retried with the standard scanner.
+   Failure:    restore and build failures are categorized in .failed.json with
+               any MSBuild, NuGet, or compiler error code; redacted diagnostics are retained.
    Skip:       standard skip key applies.
 
 9.3 What the engine does for each repo and tool in Phase 2 (pseudocode)

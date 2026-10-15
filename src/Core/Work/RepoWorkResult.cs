@@ -24,11 +24,25 @@ public sealed record RepoWorkResult
         new() { Kind = RepoWorkKind.Done, DoneMarker = marker };
 
     /// <summary>The tool failed for this repo. The message must not contain secrets.</summary>
-    public static RepoWorkResult Failed(string category, string message, int attempts = 1, string? sha = null) =>
+    public static RepoWorkResult Failed(
+        string category,
+        string message,
+        int attempts = 1,
+        string? sha = null,
+        string? failureCode = null,
+        string? diagnosticFile = null) =>
         new()
         {
             Kind = RepoWorkKind.Failed,
-            FailedMarker = new ToolFailedMarker { Category = category, Message = message, Attempts = attempts, Sha = sha }
+            FailedMarker = new ToolFailedMarker
+            {
+                Category = category,
+                FailureCode = failureCode,
+                DiagnosticFile = diagnosticFile,
+                Message = message,
+                Attempts = attempts,
+                Sha = sha
+            }
         };
 
     /// <summary>The tool decided not to run for this repo.</summary>
