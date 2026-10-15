@@ -14,16 +14,16 @@ public sealed record EngineConfig(
     int StatusIntervalSeconds = 2,
     int CommandIntervalSeconds = 2,
     EngineSettings? Settings = null,
-    string? ExclusionsFile = null)
+    string? ExclusionsFile = null,
+    string? SecretsFileOverride = null)
 {
     public const string FileName = "engine.json";
     public const string SecretsFileName = "secrets.dat";
 
     /// <summary>
-    /// The secrets file, beside engine.json and so beside the executable. Like engine.json it is found where the
-    /// engine runs from, never searched for.
+    /// The secrets file, beside engine.json by default. A run may override it with a command-line path.
     /// </summary>
-    public string SecretsFile => Path.Combine(Path.GetDirectoryName(ConfigFile)!, SecretsFileName);
+    public string SecretsFile => SecretsFileOverride ?? Path.Combine(Path.GetDirectoryName(ConfigFile)!, SecretsFileName);
 
     /// <summary>Sources, retry, skip and tool settings. Empty when engine.json has none, so built-in defaults apply.</summary>
     public EngineSettings Current => Settings ?? new EngineSettings();

@@ -61,7 +61,8 @@ in and out communication path.
     copies it beside the executable, which is where the engine reads it, like `engine.json`.
     To manage the root copy: `dotnet run --project src/Engine -- secrets set <name> --file secrets.dat`
     (run from the project root; `--stdin` to pipe the value; there is no `--value` option).
-    Without `--file` the commands use the copy beside the executable.
+    Without `--file` the secrets commands use the copy beside the executable. For a scan run,
+    `--secrets-file <path>` overrides the default beside the executable.
   - DPAPI ties the file to the Windows account and machine that wrote it. A dev copy does not
     work on the VM: run `engine secrets set` there, as the service account.
 - RepoClone keeps one bare mirror per repo (`git clone --mirror`, `remote update --prune`), so every
@@ -87,7 +88,7 @@ in and out communication path.
 ```
 dotnet build
 dotnet test
-dotnet run --project src/Engine -- run --request <path to request.json>
+dotnet run --project src/Engine -- run --request <path to request.json> [--secrets-file <path to secrets.dat>]
 ```
 
 ## Suggested build order

@@ -15,14 +15,39 @@ if (args.Length > 0 && args[0] == "secrets")
     return await RunSecretsCommandAsync(args[1..]);
 }
 
-if (args.Length != 3 || args[0] != "run" || args[1] != "--request")
+if (args.Length == 0 || args[0] != "run")
 {
-    Console.Error.WriteLine("Usage: engine run --request <path to request.json>");
+    PrintRunUsage();
     Console.Error.WriteLine("       engine secrets set|list|remove|check ...   (engine secrets for details)");
     return 2;
 }
 
-var requestFile = Path.GetFullPath(args[2]);
+string? requestArgument = null;
+string? secretsArgument = null;
+for (var i = 1; i < args.Length; i++)
+{
+    if (args[i] == "--request" && i + 1 < args.Length && requestArgument is null)
+    {
+        requestArgument = args[++i];
+    }
+    else if (args[i] == "--secrets-file" && i + 1 < args.Length && secretsArgument is null)
+    {
+        secretsArgument = args[++i];
+    }
+    else
+    {
+        PrintRunUsage();
+        return 2;
+    }
+}
+
+if (string.IsNullOrWhiteSpace(requestArgument))
+{
+    PrintRunUsage();
+    return 2;
+}
+
+var requestFile = Path.GetFullPath(requestArgument);
 
 // An old results.json beside the request would read as this run's outcome.
 RunResultsWriter.ClearStaleResults(requestFile);
@@ -31,6 +56,11 @@ RunContext context;
 try
 {
     var config = await EngineConfig.LoadAsync();
+    if (secretsArgument is not null)
+    {
+        config = config with { SecretsFileOverride = Path.GetFullPath(secretsArgument) };
+    }
+
     config.EnsureDirectories();
     context = await RunContext.StartAsync(config, requestFile);
 }
@@ -245,3 +275,6 @@ static async Task<int> RunSecretsCommandAsync(string[] secretsArgs)
 
     return await SecretsCommand.RunAsync(secretsArgs, config, new SystemSecretsConsole());
 }
+
+static void PrintRunUsage() =>
+    Console.Error.WriteLine("Usage: engine run --request <path to request.json> [--secrets-file <path to secrets.dat>]");
