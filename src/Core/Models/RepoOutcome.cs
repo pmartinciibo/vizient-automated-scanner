@@ -21,6 +21,12 @@ public sealed record RepoOutcome
     /// </summary>
     public string? HeadSha { get; init; }
 
+    /// <summary>
+    /// When the newest commit on any branch of the repo was made (committer date, UTC). Null if it could not be
+    /// found, for example a repo with no commits or one that has not been cloned yet.
+    /// </summary>
+    public DateTimeOffset? LastCommitAt { get; init; }
+
     /// <summary>A clone was already on disk when the run looked.</summary>
     public bool ExistedLocally { get; init; }
 

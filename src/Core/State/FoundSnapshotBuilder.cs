@@ -89,6 +89,7 @@ public static class FoundSnapshotBuilder
                                 Name = r.Name,
                                 LocalPath = r.LocalPath,
                                 HeadSha = r.HeadSha,
+                                LastCommitAt = r.LastCommitAt,
                                 RemoteStatus = r.RemoteStatus,
                                 Scan = stored[r.Key].Scan.Count == 0 ? null : new Dictionary<string, RepositoryScanState>(stored[r.Key].Scan)
                             })

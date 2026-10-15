@@ -407,6 +407,7 @@ public sealed class RepoCloneTool(
                 Name = repo.Name,
                 LocalPath = path,
                 HeadSha = earlier?.HeadSha,
+                LastCommitAt = earlier?.LastCommitAt,
                 ExistedLocally = RepoSynchronizer.IsMirror(path),
                 ExistedRemotely = true,
                 RemoteStatus = repo.Status

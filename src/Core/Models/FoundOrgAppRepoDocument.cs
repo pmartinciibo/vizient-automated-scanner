@@ -38,6 +38,7 @@ public sealed record FoundOrgAppRepoDocument
                 Name = repo.Name,
                 LocalPath = repo.LocalPath,
                 HeadSha = repo.HeadSha,
+                LastCommitAt = repo.LastCommitAt,
                 ExistedRemotely = true,
                 RemoteStatus = repo.RemoteStatus
             },
@@ -69,6 +70,9 @@ public sealed record FoundRepo
     /// <summary>The HEAD SHA that was checked out in the local clone when the repo was last seen.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? HeadSha { get; init; }
+
+    /// <summary>When the newest commit on any branch was made (UTC), or null if not found.</summary>
+    public DateTimeOffset? LastCommitAt { get; init; }
 
     public RepositoryStatus RemoteStatus { get; init; } = RepositoryStatus.Active;
 

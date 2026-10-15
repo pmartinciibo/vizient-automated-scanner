@@ -96,12 +96,15 @@ internal sealed partial class RepoSynchronizer(
         // The tip of the default branch. Null for a repo with no commits yet: nothing to scan, and not a failure.
         var head = await HeadAsync(path, cancellationToken);
         var after = await RefsFingerprintAsync(path, cancellationToken);
+        var lastCommit = await LastCommitAsync(path, cancellationToken);
 
         context.Repos.Record(outcome with
         {
             ExistedLocally = existedLocally,
             UpdatedLocally = cloned || before != after,
-            HeadSha = head
+            HeadSha = head,
+            // Keep the date from the last scan if git cannot give one this time.
+            LastCommitAt = lastCommit ?? outcome.LastCommitAt
         });
 
         return RepoWorkResult.Done(new ToolDoneMarker { Sha = head ?? string.Empty, StartedAt = started, EndedAt = time.GetUtcNow() });
@@ -141,6 +144,19 @@ internal sealed partial class RepoSynchronizer(
         var result = await git.LocalAsync(path, ["rev-parse", "--verify", "--quiet", "HEAD"], cancellationToken);
         var sha = result.StdOut.Trim();
         return result.Succeeded && sha.Length >= 7 ? sha : null;
+    }
+
+    // The newest committer date across all branches (not only HEAD, which can be stale). Null when there are no
+    // commits or git cannot say. Pull-request and other refs are left out on purpose.
+    private async Task<DateTimeOffset?> LastCommitAsync(string path, CancellationToken cancellationToken)
+    {
+        var result = await git.LocalAsync(
+            path,
+            ["for-each-ref", "--sort=-committerdate", "--count=1", "--format=%(committerdate:iso-strict)", "refs/heads"],
+            cancellationToken);
+        return result.Succeeded && DateTimeOffset.TryParse(result.StdOut.Trim(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var at)
+            ? at.ToUniversalTime()
+            : null;
     }
 
     // Every ref and the commit it points at, boiled down to one value. Different before and after means something
