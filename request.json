@@ -21,9 +21,13 @@
       "maxParallel": null,
       "timeoutMinutes": null,
       "sources": {
-        "VizientInc": { "state": "Clone" },
-        "ClaroHealthCareADO": { "state": "Clone" },
-        "GitHubRepos": { "state": "Clone" }
+        "ADOVizientInc": { "state": "Clone" },
+        "ADOClaroHealthCareADO": { "state": "Clone" },
+        "GitHubPrefTech": { "state": "Clone" },
+        "GitHubAptitudeMarketplace": { "state": "Clone" },
+        "GitHubSafeAndReliable": { "state": "Clone" },
+        "GitHubVizientInc": { "state": "Clone" },
+        "GitHubRnD-Vizient": { "state": "Clone" }
       }
     },
     "TruffleHog": {
