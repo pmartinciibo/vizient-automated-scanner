@@ -193,30 +193,31 @@ public sealed class RepoCloneTool(
                     var token = await RequireSecretAsync(context, source, cancellationToken);
                     credential = new FixedCredential(GitAuth.Basic("https://github.com/", "x-access-token", token, "Bearer"));
                     var auth = await credential.GetAsync(cancellationToken);
-                    var orgs = await gitHub.ListOrgsAsync(auth, cancellationToken);
-
-                    // A fine-grained token sees no membership list. Its repositories still say which organizations it reaches.
-                    if (orgs.Count == 0)
+                    // An entry that names orgs scans those and nothing else, so entries sharing a token each keep their own
+                    // orgs. An entry that names none asks the token which organizations it belongs to and scans them all.
+                    var namedOrgs = source.NamedOrgs();
+                    if (namedOrgs.Count > 0)
                     {
-                        orgs = await gitHub.ListOrgsFromReposAsync(auth, cancellationToken);
-                        if (orgs.Count > 0)
-                        {
-                            context.Status.UpdateStep(Name, step => step with
-                            {
-                                Message = $"{Overall()}GitHub: the token lists no organization memberships (usual for a fine-grained token); found {orgs.Count} from the repositories it can reach: {string.Join(", ", orgs)}"
-                            });
-                        }
+                        owners = namedOrgs.Select(o => (o, false)).ToList();
                     }
-
-                    owners = orgs.Select(o => (o, false)).ToList();
-
-                    // Orgs engine.json names are scanned too. An org found both ways is listed once.
-                    foreach (var named in source.Orgs ?? [])
+                    else
                     {
-                        if (!owners.Any(o => string.Equals(o.Login, named, StringComparison.OrdinalIgnoreCase)))
+                        var orgs = await gitHub.ListOrgsAsync(auth, cancellationToken);
+
+                        // A fine-grained token sees no membership list. Its repositories still say which organizations it reaches.
+                        if (orgs.Count == 0)
                         {
-                            owners.Add((named.Trim(), false));
+                            orgs = await gitHub.ListOrgsFromReposAsync(auth, cancellationToken);
+                            if (orgs.Count > 0)
+                            {
+                                context.Status.UpdateStep(Name, step => step with
+                                {
+                                    Message = $"{Overall()}GitHub: the token lists no organization memberships (usual for a fine-grained token); found {orgs.Count} from the repositories it can reach: {string.Join(", ", orgs)}"
+                                });
+                            }
                         }
+
+                        owners = orgs.Select(o => (o, false)).ToList();
                     }
 
                     // Only if engine.json asks: the account's own repos, under the account's name.
