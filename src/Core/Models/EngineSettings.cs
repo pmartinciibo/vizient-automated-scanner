@@ -20,8 +20,8 @@ public sealed record EngineSettings
 }
 
 /// <summary>
-/// A place to find repos, and the name of the secret that holds its token. A GitHub entry that names no org: the engine
-/// asks GitHub which organizations the token belongs to and scans them all. One that names orgs scans only those. An Azure DevOps entry names its org.
+/// A place to find repos, and the name of the secret that holds its token. A GitHub entry names no org: the engine
+/// asks GitHub which organizations the token belongs to and scans them all. An Azure DevOps entry names its org.
 /// </summary>
 public sealed record SourceSettings
 {
@@ -58,9 +58,9 @@ public sealed record SourceSettings
             .ToList();
 
     /// <summary>
-    /// Organizations to scan. GitHub: only these, so several entries can share one token and each keep its own orgs
-    /// (this also reaches orgs the token cannot find by itself, such as one whose public repos the account can read but
-    /// which it does not belong to). Left out means discovery: every org the token belongs to. Azure DevOps: more orgs for the same token, besides "org". An org that cannot be listed is
+    /// Organizations to scan. GitHub: as well as the ones discovered from the token. For orgs the token cannot find
+    /// by itself, such as one whose public repos the account can read but which it does not belong to. Left out means
+    /// discovery alone. Azure DevOps: more orgs for the same token, besides "org". An org that cannot be listed is
     /// flagged for that org only.
     /// </summary>
     public List<string>? Orgs { get; init; }

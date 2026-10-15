@@ -1044,14 +1044,14 @@ public class RepoCloneTests : IDisposable
     }
 
     [Fact]
-    public async Task AnEntryThatNamesOrgsListsOnlyThoseEvenWhenTheTokenSeesMore()
+    public async Task NamedOrgsAreAddedToTheDiscoveredOnesAndAnOrgFoundBothWaysIsListedOnce()
     {
         WithNamedOrgs("alpha", "ALPHA", "beta");
         var a = _run.Origin("a");
         var b = _run.Origin("b");
         var sources = new FakeSources
         {
-            Orgs = ["alpha", "other"],
+            Orgs = ["alpha"],
             Respond = uri => uri.Query.Contains("page=1")
                 ? uri.AbsolutePath == "/orgs/alpha/repos" ? FakeSources.GitHubList(FakeSources.GitHubRepo(1, "a", a.Path))
                 : uri.AbsolutePath == "/orgs/beta/repos" ? FakeSources.GitHubList(FakeSources.GitHubRepo(2, "b", b.Path))
@@ -1063,37 +1063,6 @@ public class RepoCloneTests : IDisposable
 
         Assert.Equal(["alpha", "beta"], context.Repos.Snapshot().Select(r => r.Org).Order());
         Assert.Equal(1, sources.Requests.Count(r => r.Uri.AbsolutePath == "/orgs/alpha/repos"));
-        Assert.DoesNotContain(sources.Requests, r => r.Uri.AbsolutePath == "/orgs/other/repos");
-    }
-
-    [Fact]
-    public async Task EntriesSharingATokenEachKeepTheirOwnOrgs()
-    {
-        _run.With(st => st with
-        {
-            Sources =
-            [
-                new SourceSettings { Name = "One", Source = "GitHub", TokenSecret = "gh-token", Orgs = ["alpha"] },
-                new SourceSettings { Name = "Two", Source = "GitHub", TokenSecret = "gh-token", Orgs = ["beta"] }
-            ]
-        });
-        var a = _run.Origin("a");
-        var b = _run.Origin("b");
-        var sources = new FakeSources
-        {
-            Orgs = ["alpha", "beta"],
-            Respond = uri => uri.Query.Contains("page=1")
-                ? uri.AbsolutePath == "/orgs/alpha/repos" ? FakeSources.GitHubList(FakeSources.GitHubRepo(1, "a", a.Path))
-                : uri.AbsolutePath == "/orgs/beta/repos" ? FakeSources.GitHubList(FakeSources.GitHubRepo(2, "b", b.Path))
-                : FakeSources.GitHubList()
-                : FakeSources.GitHubList()
-        };
-
-        var context = await _run.RunAsync(sources);
-
-        Assert.Equal(1, sources.Requests.Count(r => r.Uri.AbsolutePath == "/orgs/alpha/repos"));
-        Assert.Equal(1, sources.Requests.Count(r => r.Uri.AbsolutePath == "/orgs/beta/repos"));
-        Assert.Equal(["alpha", "beta"], context.Repos.Snapshot().Select(r => r.Org).Order());
     }
 
     [Fact]
