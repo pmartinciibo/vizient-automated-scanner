@@ -14,7 +14,7 @@ public abstract class ProcessScanTool : ScanToolBase
     /// <summary>The program to run if engine.json gives no exePath.</summary>
     protected abstract string DefaultExe { get; }
 
-    /// <summary>Other programs this tool needs (the SonarDotNet build runs dotnet). Checked up front with the main one.</summary>
+    /// <summary>Additional programs this tool needs. Checked up front with the main executable.</summary>
     protected virtual IEnumerable<string> OtherPrograms(RunContext context) => [];
 
     protected ToolSettings Settings(RunContext context) => context.Config.Current.Tool(Name);

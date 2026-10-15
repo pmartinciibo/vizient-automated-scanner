@@ -6,8 +6,8 @@ namespace Vizient.AutomatedScanner.Core.Tools;
 
 /// <summary>
 /// Tool 8: SonarQube analysis of .NET repos (a .sln or .csproj is tracked). <c>dotnet-sonarscanner begin</c>, then
-/// <c>dotnet build</c> of the .sln nearest the top (or else the .csproj), then <c>end</c>, so the analysis sees the compiled
-/// code. Then the same wait and fetch as <see cref="SonarStandardTool"/>. It builds the repo, which runs the repo's
+/// an SDK-style <c>dotnet build</c> or Visual Studio <c>MSBuild.exe</c> for legacy projects, then <c>end</c>, so the
+/// analysis sees the compiled code. Then the same wait and fetch as <see cref="SonarStandardTool"/>. It builds the repo, which runs the repo's
 /// code, so it runs under the locked-down account (<c>runAs</c>) when engine.json names one. A failed restore or
 /// build is BuildFailed, and the repo is not retried with the standard scanner. A repo that is not .NET is skipped
 /// as NotApplicable.
@@ -47,6 +47,9 @@ public sealed partial class SonarDotNetTool(
             return NotApplicable();
         }
 
+        var useMsbuild = DotNetProjects.RequiresMsbuild(work.WorkingPath!, target);
+        var buildProgram = useMsbuild ? await MsbuildExeAsync(context, cancellationToken) : DotnetExe(context);
+        var targetPath = Path.Combine(work.WorkingPath!, target);
         var token = await TokenAsync(context, cancellationToken);
         var key = InvalidKeyCharacters().Replace(work.Repo.Key, "-");
         var environment = new Dictionary<string, string>
@@ -92,10 +95,13 @@ public sealed partial class SonarDotNetTool(
             return Failure(begun);
         }
 
-        var build = await StepAsync(DotnetExe(context), ["build", Path.Combine(work.WorkingPath!, target), "--nologo", "-v:minimal"]);
+        List<string> buildArguments = useMsbuild
+            ? new List<string> { "-restore", targetPath, "/nologo", "/verbosity:minimal" }
+            : ["build", targetPath, "--nologo", "-v:minimal"];
+        var build = await StepAsync(buildProgram, buildArguments);
         if (!build.Succeeded)
         {
-            // dotnet build reports its errors on standard output.
+            // Build tools report diagnostics on standard output.
             var detail = Tail(build.StdOut + " " + build.StdErr, 600);
             return RepoWorkResult.Failed(
                 build.Outcome == ProcessOutcome.TimedOut ? "Timeout" : "BuildFailed",
@@ -114,5 +120,50 @@ public sealed partial class SonarDotNetTool(
             : null;
 
         return await CollectAsync(work, key, reportTask ?? Path.Combine(work.WorkingPath!, ".sonarqube", "report-task.txt"), started, deadline, cancellationToken);
+    }
+
+    private static async Task<string> MsbuildExeAsync(RunContext context, CancellationToken cancellationToken)
+    {
+        var configuredPath = context.Config.Current.Tool(ToolNames.SonarDotNet).MsbuildPath;
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            if (!ExecutableFinder.Exists(configuredPath))
+            {
+                throw new InvalidOperationException($"SonarDotNet cannot find the configured MSBuild executable '{configuredPath}'.");
+            }
+
+            return configuredPath;
+        }
+
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        var vswhere = Path.Combine(programFiles, "Microsoft Visual Studio", "Installer", "vswhere.exe");
+        if (File.Exists(vswhere))
+        {
+            var result = await context.Processes.RunAsync(new ProcessSpec
+            {
+                FileName = vswhere,
+                Arguments = ["-latest", "-products", "*", "-requires", "Microsoft.Component.MSBuild", "-find", @"MSBuild\**\Bin\MSBuild.exe"],
+                Timeout = TimeSpan.FromSeconds(15)
+            }, cancellationToken);
+            if (result.Succeeded)
+            {
+                var path = result.StdOut.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Trim().Trim('"'))
+                    .FirstOrDefault(File.Exists);
+                if (path is not null)
+                {
+                    return path;
+                }
+            }
+        }
+
+        if (ExecutableFinder.Exists("MSBuild.exe"))
+        {
+            return "MSBuild.exe";
+        }
+
+        throw new InvalidOperationException(
+            "SonarDotNet needs Visual Studio MSBuild for this legacy project, but MSBuild.exe was not found. " +
+            "Install the Visual Studio Build Tools MSBuild component or set tools.SonarDotNet.msbuildPath in engine.json.");
     }
 }

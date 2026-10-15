@@ -449,10 +449,40 @@ public sealed class RepoCloneTool(
 
         // Per sources entry: what listing found, how many of those are to be cloned or updated, and how they are going.
         string? EntryOf(RepoOutcome repo) => entryOfOrg.GetValueOrDefault($"{repo.Source}|{repo.Org}");
+        ToolSkippedMarker? InitialSkipReason(RepoOutcome repo)
+        {
+            var scope = context.Request.Scope;
+            if (scope.ExcludeRepos.Contains(repo.Key)
+                || (scope.IncludeRepos.Count > 0 && !scope.IncludeRepos.Contains(repo.Key)))
+            {
+                return new ToolSkippedMarker { Reason = RepoWorkLoop.ExcludedByRequest };
+            }
+
+            if (context.Control.IsRepoSkipped(repo.Key))
+            {
+                return new ToolSkippedMarker { Reason = RepoWorkLoop.SkippedByCommand };
+            }
+
+            return SkipReason(repo);
+        }
+
         foreach (var group in outcomes.GroupBy(EntryOf).Where(g => g.Key is not null))
         {
-            var skipped = group.Count(r => SkipReason(r) is not null);
-            context.Status.UpdateSource(group.Key!, entry => entry with { Found = group.Count(), Skipped = skipped, Total = group.Count() - skipped });
+            var reasons = group.Select(InitialSkipReason).ToList();
+            var skipped = reasons.Count(reason => reason is not null);
+            var listOnly = group.Any(r => StateOfRepo(r.Source, r.Org) == SourceState.ListOnly);
+            var archived = listOnly ? 0 : reasons.Count(reason => reason?.Reason == "StatusArchived");
+            var disabled = listOnly ? 0 : reasons.Count(reason => reason?.Reason == "StatusDisabled");
+            var other = listOnly ? 0 : skipped - archived - disabled;
+            context.Status.UpdateSource(group.Key!, entry => entry with
+            {
+                Found = group.Count(),
+                Skipped = skipped,
+                Total = group.Count() - skipped,
+                ArchivedSkipped = archived,
+                DisabledSkipped = disabled,
+                OtherSkipped = other
+            });
         }
 
         void Tally(RepoOutcome repo, RepoWorkKind kind)
@@ -463,9 +493,20 @@ public sealed class RepoCloneTool(
                 {
                     RepoWorkKind.Done => entry with { Done = entry.Done + 1 },
                     RepoWorkKind.Failed => entry with { Failed = entry.Failed + 1 },
-                    _ => entry with { Skipped = entry.Skipped + 1, Total = Math.Max(0, entry.Total - 1) }
+                    _ => entry with
+                    {
+                        Skipped = entry.Skipped + 1,
+                        OtherSkipped = entry.OtherSkipped + 1,
+                        Total = Math.Max(0, entry.Total - 1)
+                    }
                 });
             }
+        }
+
+        Task TallySkipped(RepoOutcome repo, ToolSkippedMarker marker, CancellationToken cancellationToken)
+        {
+            Tally(repo, RepoWorkKind.Skipped);
+            return Task.CompletedTask;
         }
 
         var work = new RepoWork(
@@ -474,7 +515,11 @@ public sealed class RepoCloneTool(
                 try
                 {
                     var result = await synchronizer.SyncAsync(repoWork, token);
-                    Tally(repoWork.Repo, result.Kind);
+                    if (result.Kind != RepoWorkKind.Skipped)
+                    {
+                        Tally(repoWork.Repo, result.Kind);
+                    }
+
                     return result;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -483,7 +528,8 @@ public sealed class RepoCloneTool(
                     throw;
                 }
             },
-            SkipReason);
+            SkipReason,
+            OnSkipped: TallySkipped);
 
         try
         {

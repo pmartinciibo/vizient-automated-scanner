@@ -160,6 +160,12 @@ public sealed record SourceProgress
     public int Done { get; init; }
     public int Failed { get; init; }
     public int Skipped { get; init; }
+    /// <summary>Repos not cloned because they are archived.</summary>
+    public int ArchivedSkipped { get; init; }
+    /// <summary>Repos not cloned because GitHub or ADO reports them disabled.</summary>
+    public int DisabledSkipped { get; init; }
+    /// <summary>Repos skipped for a reason other than archived or disabled.</summary>
+    public int OtherSkipped { get; init; }
 }
 
 public sealed record ScannerProgress

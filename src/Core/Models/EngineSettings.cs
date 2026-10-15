@@ -189,8 +189,11 @@ public sealed record ToolSettings
     /// </summary>
     public string? ExePath { get; init; }
 
-    /// <summary>SonarDotNet only. The dotnet program that builds the repo. Defaults to "dotnet".</summary>
+    /// <summary>SonarDotNet only. The dotnet program used for SDK-style builds. Defaults to "dotnet".</summary>
     public string? DotnetPath { get; init; }
+
+    /// <summary>SonarDotNet only. Optional Visual Studio MSBuild.exe path for legacy project builds; otherwise discovered with vswhere.</summary>
+    public string? MsbuildPath { get; init; }
 
     /// <summary>Snyk only. The Snyk organization the results are reported to (--org). Left out means the account's default.</summary>
     public string? Org { get; init; }

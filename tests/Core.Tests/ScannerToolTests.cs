@@ -567,7 +567,9 @@ public class ScannerToolTests : IDisposable
         var sonar = new FakeSonar { TotalFor = _ => 0 };
         var dotnet = Program("dotnet");
         ConfigureSonar("SonarDotNet", sonar, t => t with { DotnetPath = dotnet });
-        await CloneAsync(("src/z.csproj", "x"), ("src/a/b.csproj", "x"));
+        await CloneAsync(
+            ("src/z.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>"),
+            ("src/a/b.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>"));
         var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
         var runner = _world.Intercept(spec =>
             spec.FileName == scanner && spec.Arguments[0] == "end" ? ScannerOk(spec, Path.Combine(".sonarqube", "out", ".sonar"))
@@ -577,6 +579,30 @@ public class ScannerToolTests : IDisposable
         await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
 
         Assert.EndsWith("z.csproj", runner.For(dotnet).Single().Arguments[1]);
+    }
+
+    [Fact]
+    public async Task SonarDotNetUsesVisualStudioMsbuildForLegacyProjects()
+    {
+        var sonar = new FakeSonar { TotalFor = _ => 0 };
+        var msbuild = Program("msbuild");
+        ConfigureSonar("SonarDotNet", sonar, t => t with { MsbuildPath = msbuild });
+        await CloneAsync(
+            ("Legacy.sln", "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"Legacy\", \"Legacy.csproj\", \"{11111111-1111-1111-1111-111111111111}\""),
+            ("Legacy.csproj", "<Project ToolsVersion=\"15.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"></Project>"));
+        var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
+        var runner = _world.Intercept(spec =>
+            spec.FileName == scanner && spec.Arguments[0] == "end" ? ScannerOk(spec, Path.Combine(".sonarqube", "out", ".sonar"))
+            : spec.FileName == scanner || spec.FileName == msbuild ? RecordingRunner.Ok()
+            : null);
+
+        await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
+
+        var build = runner.For(msbuild).Single();
+        Assert.Equal("-restore", build.Arguments[0]);
+        Assert.EndsWith("Legacy.sln", build.Arguments[1]);
+        Assert.Empty(runner.For(_world.Context.Config.Current.Tool("SonarDotNet").DotnetPath ?? "dotnet"));
+        Assert.True(_world.Done("SonarDotNet", 1));
     }
 
     [Fact]
@@ -699,6 +725,26 @@ public class ScannerToolTests : IDisposable
     [InlineData("deep/x.csproj,deep/x.sln", "deep/x.sln")]
     public void TheBuildTargetIsTheSlnNearestTheTopOtherwiseTheCsprojNearestTheTop(string files, string expected) =>
         Assert.Equal(expected, DotNetProjects.BuildTarget(files.Split(',')));
+
+    [Fact]
+    public void LegacyAndNonCsprojSolutionProjectsRequireVisualStudioMsbuild()
+    {
+        var legacy = Path.Combine(_world.Root, "legacy.sln");
+        File.WriteAllText(legacy, "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"Legacy\", \"Legacy.csproj\", \"{11111111-1111-1111-1111-111111111111}\"");
+        File.WriteAllText(Path.Combine(_world.Root, "Legacy.csproj"), "<Project ToolsVersion=\"15.0\"></Project>");
+        Assert.True(DotNetProjects.RequiresMsbuild(_world.Root, "legacy.sln"));
+
+        File.WriteAllText(legacy, "Project(\"{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}\") = \"Database\", \"Database.sqlproj\", \"{22222222-2222-2222-2222-222222222222}\"");
+        Assert.True(DotNetProjects.RequiresMsbuild(_world.Root, "legacy.sln"));
+    }
+
+    [Fact]
+    public void SdkStyleProjectUsesDotnet()
+    {
+        File.WriteAllText(Path.Combine(_world.Root, "Sdk.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+
+        Assert.False(DotNetProjects.RequiresMsbuild(_world.Root, "Sdk.csproj"));
+    }
 
     [Fact]
     public void NothingToBuildIsNull() => Assert.Null(DotNetProjects.BuildTarget([]));

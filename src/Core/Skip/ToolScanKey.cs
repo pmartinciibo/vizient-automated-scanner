@@ -43,7 +43,7 @@ public sealed record ToolScanKey(string ScanMode, string ToolVersion, string Rul
             settings.Mode ?? DefaultScanMode,
             settings.Version ?? string.Empty,
             settings.RulesVersion ?? string.Empty,
-            ComputeConfigHash(config, settings));
+            ComputeConfigHash(config, settings, tool));
     }
 
     /// <summary>
@@ -51,16 +51,22 @@ public sealed record ToolScanKey(string ScanMode, string ToolVersion, string Rul
     /// shared exclusions file. Settings that only change how it runs (parallelism, timeout, secret names) are left
     /// out, so tuning them does not force a rescan of everything.
     /// </summary>
-    public static string ComputeConfigHash(EngineConfig config, ToolSettings settings)
+    public static string ComputeConfigHash(EngineConfig config, ToolSettings settings, string? tool = null)
     {
         var text = new StringBuilder()
             .Append("mode=").Append(settings.Mode ?? DefaultScanMode).Append('\n')
             .Append("verify=").Append(settings.Verify?.ToString() ?? "unset").Append('\n')
             .Append("packs=").Append(string.Join('|', (settings.Packs ?? []).Order(StringComparer.Ordinal))).Append('\n')
-            .Append("exclusions=").Append(ExclusionsText(config)).Append('\n')
-            .ToString();
+            .Append("exclusions=").Append(ExclusionsText(config)).Append('\n');
 
-        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+        if (tool == ToolNames.SonarDotNet)
+        {
+            text.Append("buildStrategy=project-aware-v1\n")
+                .Append("dotnetPath=").Append(settings.DotnetPath ?? "dotnet").Append('\n')
+                .Append("msbuildPath=").Append(settings.MsbuildPath ?? "auto").Append('\n');
+        }
+
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
     }
 
     /// <summary>

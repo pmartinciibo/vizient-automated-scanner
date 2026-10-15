@@ -760,9 +760,12 @@ It is small by design. Per-repo detail lives in the marker files.
   TOOL 8 - SonarDotNet (.NET repos)
    Applies to: in-scope repos WITH a .sln or .csproj file (these repos are NOT
                also sent to SonarStandard)
-   Action:     dotnet sonarscanner begin; dotnet build; dotnet sonarscanner
-               end (runs under the locked-down account because it builds the
-               repo), wait for the analysis task, fetch the issues as above.
+   Action:     dotnet sonarscanner begin; build SDK-style projects with
+               dotnet build and legacy/non-SDK projects with Visual Studio
+               MSBuild.exe; dotnet sonarscanner end. The build runs under the
+               locked-down account, then the engine waits for the analysis task
+               and fetches the issues as above. MSBuild is discovered with
+               vswhere; tools.SonarDotNet.msbuildPath can override it.
    Output:     results\SonarDotNet\<repoKey>.json and markers
    Failure:    restore or build failures give .failed.json (BuildFailed);
                the repo is NOT retried with the standard scanner.

@@ -110,7 +110,7 @@ public sealed class RepoWorkLoop
                     var repo = pending.Dequeue();
                     if (control.IsRepoSkipped(repo.Key))
                     {
-                        await SkipLateAsync(repo, SkippedByCommand, token);
+                        await SkipLateAsync(repo, work, SkippedByCommand, token);
                         continue;
                     }
 
@@ -271,6 +271,11 @@ public sealed class RepoWorkLoop
                 break;
             default:
                 await markers.WriteSkippedAsync(_tool, repo.Key, result.SkippedMarker!, ct);
+                if (work.OnSkipped is not null)
+                {
+                    await work.OnSkipped(repo, result.SkippedMarker!, ct);
+                }
+
                 break;
         }
 
@@ -301,9 +306,15 @@ public sealed class RepoWorkLoop
     }
 
     // A repo was queued, then a SkipRepo command arrived before it started.
-    private async Task SkipLateAsync(RepoOutcome repo, string reason, CancellationToken ct)
+    private async Task SkipLateAsync(RepoOutcome repo, RepoWork work, string reason, CancellationToken ct)
     {
-        await _context.Markers.WriteSkippedAsync(_tool, repo.Key, new ToolSkippedMarker { Reason = reason }, ct);
+        var marker = new ToolSkippedMarker { Reason = reason };
+        await _context.Markers.WriteSkippedAsync(_tool, repo.Key, marker, ct);
+        if (work.OnSkipped is not null)
+        {
+            await work.OnSkipped(repo, marker, ct);
+        }
+
         lock (_gate)
         {
             _total--;

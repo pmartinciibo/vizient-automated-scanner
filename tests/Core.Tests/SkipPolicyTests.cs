@@ -5,6 +5,7 @@ using Vizient.AutomatedScanner.Core.Configuration;
 using Vizient.AutomatedScanner.Core.Models;
 using Vizient.AutomatedScanner.Core.Skip;
 using Vizient.AutomatedScanner.Core.State;
+using Vizient.AutomatedScanner.Core.Tools;
 
 // The decision rules on their own: what the key is made of, when a repo is skipped, and how canaries are picked.
 public class SkipPolicyTests : IDisposable
@@ -347,6 +348,20 @@ public class SkipPolicyTests : IDisposable
         Assert.NotEqual(Hash(baseline), Hash(baseline with { Verify = true }));
         Assert.NotEqual(Hash(baseline), Hash(baseline with { Packs = ["p/default"] }));
         Assert.NotEqual(Hash(baseline), Hash(baseline with { Packs = ["p/default", "p/other"] }));
+    }
+
+    [Fact]
+    public void SonarDotNetBuildStrategyAndExecutablesArePartOfItsConfigHash()
+    {
+        var config = Config();
+        var baseline = new ToolSettings();
+
+        Assert.NotEqual(
+            ToolScanKey.ComputeConfigHash(config, baseline, ToolNames.SonarDotNet),
+            ToolScanKey.ComputeConfigHash(config, baseline with { MsbuildPath = "C:\\BuildTools\\MSBuild.exe" }, ToolNames.SonarDotNet));
+        Assert.Equal(
+            ToolScanKey.ComputeConfigHash(config, baseline),
+            ToolScanKey.ComputeConfigHash(config, baseline with { MsbuildPath = "C:\\BuildTools\\MSBuild.exe" }));
     }
 
     [Fact]

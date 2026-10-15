@@ -1,3 +1,5 @@
+using System.Xml;
+using System.Xml.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Vizient.AutomatedScanner.Core.Configuration;
@@ -208,8 +210,11 @@ internal static class ScanOutput
 }
 
 /// <summary>Looks inside a repo's working copy for what decides which Sonar scanner applies.</summary>
-public static class DotNetProjects
+public static partial class DotNetProjects
 {
+    [GeneratedRegex("^Project\\(\"[^\"]+\"\\)\\s*=\\s*\"[^\"]*\",\\s*\"(?<path>[^\"]+)\"\\s*,", RegexOptions.Multiline)]
+    private static partial Regex SolutionProjectPath();
+
     /// <summary>The .sln and .csproj files git tracks in the working copy, paths relative to it. Empty if there are none.</summary>
     public static async Task<IReadOnlyList<string>> FindAsync(RunContext context, string workingPath, CancellationToken cancellationToken)
     {
@@ -244,5 +249,63 @@ public static class DotNetProjects
                  .ThenBy(f => f, StringComparer.Ordinal);
 
         return Of(".sln").Concat(Of(".csproj")).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Legacy projects and solutions with non-SDK projects need Visual Studio MSBuild; use the dotnet CLI only when
+    /// every project referenced by the solution is an SDK-style C# project.
+    /// </summary>
+    public static bool RequiresMsbuild(string workingPath, string target)
+    {
+        var targetPath = Path.GetFullPath(Path.Combine(workingPath, target));
+        if (!Path.GetExtension(target).Equals(".sln", StringComparison.OrdinalIgnoreCase))
+        {
+            return !IsSdkStyleProject(targetPath);
+        }
+
+        var root = Path.GetFullPath(workingPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var solutionDirectory = Path.GetDirectoryName(targetPath)!;
+        foreach (var match in SolutionProjectPath().Matches(File.ReadAllText(targetPath)).Cast<Match>())
+        {
+            var project = match.Groups["path"].Value;
+            var extension = Path.GetExtension(project);
+            if (extension.Length == 0)
+            {
+                continue;
+            }
+
+            if (!extension.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var projectPath = Path.GetFullPath(Path.Combine(solutionDirectory, project));
+            if (!projectPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !IsSdkStyleProject(projectPath))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSdkStyleProject(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            var document = XDocument.Load(path);
+            return document.Root?.Attribute("Sdk") is { Value.Length: > 0 }
+                || document.Descendants().Any(element => element.Name.LocalName == "Sdk");
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
     }
 }

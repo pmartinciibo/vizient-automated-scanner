@@ -63,10 +63,12 @@ public sealed record RepoWorkContext(string Tool, RepoOutcome Repo, RunContext R
 /// Called after a repo's done marker has been written, and only then. This is where the scan state for the
 /// repo is recorded, so state is never ahead of the markers.
 /// </param>
+/// <param name="OnSkipped">Called after a skipped marker is written for a repo skipped after planning.</param>
 public sealed record RepoWork(
     Func<RepoWorkContext, CancellationToken, Task<RepoWorkResult>> Scan,
     Func<RepoOutcome, ToolSkippedMarker?>? SkipReason = null,
-    Func<RepoOutcome, ToolDoneMarker, CancellationToken, Task>? OnDone = null);
+    Func<RepoOutcome, ToolDoneMarker, CancellationToken, Task>? OnDone = null,
+    Func<RepoOutcome, ToolSkippedMarker, CancellationToken, Task>? OnSkipped = null);
 
 /// <summary>How a pass over the repos ended.</summary>
 /// <param name="Total">Repos the tool was to scan (not counting skipped ones).</param>

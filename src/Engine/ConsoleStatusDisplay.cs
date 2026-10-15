@@ -113,10 +113,38 @@ public sealed class ConsoleStatusDisplay
             // Under "RepoClone": each sources entry, whether the request has it on, and how its repos are going.
             foreach (var source in s.Sources ?? [])
             {
-                lines.Add(source.Enabled
-                    ? $"      {source.Source} {source.Name} [{source.State}]: {source.KnownRepos} known, {source.Found} found, "
-                        + $"{source.Done + source.Failed} of {source.Total} cloned/updated ({source.Failed} failed, {source.Skipped} skipped)"
-                    : $"      {source.Source} {source.Name} [off]: {source.KnownRepos} known, not used this run");
+                if (!source.Enabled)
+                {
+                    lines.Add($"      {source.Source} {source.Name} [off]: {source.KnownRepos} local, not used this run");
+                }
+                else if (source.State == nameof(SourceState.ListOnly))
+                {
+                    lines.Add($"      {source.Source} {source.Name} [ListOnly]: {source.KnownRepos} local, {source.Found} remote, not cloned");
+                }
+                else
+                {
+                    var reasons = new List<string>();
+                    if (source.ArchivedSkipped > 0)
+                    {
+                        reasons.Add($"{source.ArchivedSkipped} archived");
+                    }
+
+                    if (source.DisabledSkipped > 0)
+                    {
+                        reasons.Add($"{source.DisabledSkipped} disabled");
+                    }
+
+                    if (source.OtherSkipped > 0)
+                    {
+                        reasons.Add($"{source.OtherSkipped} other");
+                    }
+
+                    var skipped = source.Skipped > 0
+                        ? $", {source.Skipped} skipped ({string.Join(", ", reasons)})"
+                        : string.Empty;
+                    lines.Add($"      {source.Source} {source.Name} [{source.State}]: {source.KnownRepos} local, {source.Found} remote, "
+                        + $"{source.Done + source.Failed} of {source.Total} cloned/updated ({source.Failed} failed{skipped})");
+                }
             }
 
             // Under "Scanning": each scanner that is on, indented, with what it has found so far.

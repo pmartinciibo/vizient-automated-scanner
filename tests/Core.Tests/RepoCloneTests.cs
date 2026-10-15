@@ -244,12 +244,57 @@ public class RepoCloneTests : IDisposable
         Assert.False(Directory.Exists(Repo(context, "gh-3").LocalPath!));
         Assert.Contains("StatusArchived", File.ReadAllText(context.Paths.SkippedMarker("RepoClone", "gh-2")));
         Assert.Contains("StatusDisabled", File.ReadAllText(context.Paths.SkippedMarker("RepoClone", "gh-3")));
+        var source = Assert.Single(context.Status.Snapshot().Steps.Single(s => s.Name == "RepoClone").Sources!);
+        Assert.Equal((1, 1, 0, 2), (source.ArchivedSkipped, source.DisabledSkipped, source.OtherSkipped, source.Skipped));
 
         _run.With(s => s with { ScanArchived = true });
         var again = await _run.RunAsync(sources);
 
         Assert.True(Directory.Exists(Repo(again, "gh-2").LocalPath!));
         Assert.False(Directory.Exists(Repo(again, "gh-3").LocalPath!));
+    }
+
+    [Fact]
+    public async Task ListOnlyReportsReposAsRemoteWithoutSkipReasonBreakdown()
+    {
+        var repo = _run.Origin("one");
+        var context = await _run.RunAsync(
+            ListsGitHub((1, "one", repo)),
+            request: request => request with
+            {
+                Tools = new()
+                {
+                    ["RepoClone"] = new ToolRequestOverride
+                    {
+                        Sources = new()
+                        {
+                            ["GitHub"] = new SourceRequestOverride { State = SourceState.ListOnly }
+                        }
+                    }
+                }
+            });
+
+        var source = Assert.Single(context.Status.Snapshot().Steps.Single(s => s.Name == "RepoClone").Sources!);
+        Assert.Equal("ListOnly", source.State);
+        Assert.Equal(1, source.Found);
+        Assert.Equal((0, 0, 0), (source.ArchivedSkipped, source.DisabledSkipped, source.OtherSkipped));
+        Assert.Contains("ListOnly", File.ReadAllText(context.Paths.SkippedMarker("RepoClone", "gh-1")));
+    }
+
+    [Fact]
+    public async Task ARepoExcludedByTheRequestIsCountedAsOtherSkipped()
+    {
+        var repo = _run.Origin("one");
+        var context = await _run.RunAsync(
+            ListsGitHub((1, "one", repo)),
+            request: request => request with
+            {
+                Scope = new RequestScope { ExcludeRepos = ["gh-1"] }
+            });
+
+        var source = Assert.Single(context.Status.Snapshot().Steps.Single(s => s.Name == "RepoClone").Sources!);
+        Assert.Equal((1, 0, 0, 1), (source.OtherSkipped, source.ArchivedSkipped, source.DisabledSkipped, source.Skipped));
+        Assert.Contains("ExcludedByRequest", File.ReadAllText(context.Paths.SkippedMarker("RepoClone", "gh-1")));
     }
 
     [Fact]
