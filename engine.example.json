@@ -79,6 +79,9 @@
       "timeoutMinutes": 60,
       "version": "10.x",
       "rulesVersion": "profile-example",
+      "msbuildScannerPath": "C:\\Tools\\sonar-scanner-msbuild\\SonarScanner.MSBuild.exe",
+      "msbuildScannerVersion": "11.3",
+      "fallbackToStandardScanner": true,
       "serverUrl": "http://localhost:9000",
       "env": { "SONAR_TOKEN": "sonar-token" },
       "runAs": { "account": "DOMAIN\\svc-buildtools", "passwordSecret": "buildtools-account-password" }

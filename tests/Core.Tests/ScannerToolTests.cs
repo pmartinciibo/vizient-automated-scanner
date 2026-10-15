@@ -586,14 +586,15 @@ public class ScannerToolTests : IDisposable
     {
         var sonar = new FakeSonar { TotalFor = _ => 0 };
         var msbuild = Program("msbuild");
-        ConfigureSonar("SonarDotNet", sonar, t => t with { MsbuildPath = msbuild });
+        var frameworkScanner = Program("SonarScanner.MSBuild");
+        ConfigureSonar("SonarDotNet", sonar, t => t with { MsbuildPath = msbuild, MsbuildScannerPath = frameworkScanner });
         await CloneAsync(
             ("Legacy.sln", "Project(\"{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}\") = \"Legacy\", \"Legacy.csproj\", \"{11111111-1111-1111-1111-111111111111}\""),
             ("Legacy.csproj", "<Project ToolsVersion=\"15.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"></Project>"));
         var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
         var runner = _world.Intercept(spec =>
-            spec.FileName == scanner && spec.Arguments[0] == "end" ? ScannerOk(spec, Path.Combine(".sonarqube", "out", ".sonar"))
-            : spec.FileName == scanner || spec.FileName == msbuild ? RecordingRunner.Ok()
+            spec.FileName == frameworkScanner && spec.Arguments[0] == "end" ? ScannerOk(spec, Path.Combine(".sonarqube", "out", ".sonar"))
+            : spec.FileName == frameworkScanner || spec.FileName == msbuild ? RecordingRunner.Ok()
             : null);
 
         await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
@@ -601,8 +602,145 @@ public class ScannerToolTests : IDisposable
         var build = runner.For(msbuild).Single();
         Assert.Equal("-restore", build.Arguments[0]);
         Assert.EndsWith("Legacy.sln", build.Arguments[1]);
-        Assert.Empty(runner.For(_world.Context.Config.Current.Tool("SonarDotNet").DotnetPath ?? "dotnet"));
+        Assert.DoesNotContain(runner.Specs, spec => spec.FileName == scanner);
         Assert.True(_world.Done("SonarDotNet", 1));
+    }
+
+    [Fact]
+    public async Task SonarDotNetUsesVisualStudioMsbuildForSdkProjectsWithComReferences()
+    {
+        var sonar = new FakeSonar { TotalFor = _ => 0 };
+        var msbuild = Program("msbuild");
+        var frameworkScanner = Program("SonarScanner.MSBuild");
+        ConfigureSonar("SonarDotNet", sonar, t => t with { MsbuildPath = msbuild, MsbuildScannerPath = frameworkScanner });
+        await CloneAsync(("app.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net9.0-windows</TargetFramework></PropertyGroup><ItemGroup><COMReference Include=\"LegacyComLibrary\" /></ItemGroup></Project>"));
+        var dotnetScanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
+        var runner = _world.Intercept(spec =>
+            spec.FileName == frameworkScanner && spec.Arguments[0] == "end" ? ScannerOk(spec, Path.Combine(".sonarqube", "out", ".sonar"))
+            : spec.FileName == frameworkScanner || spec.FileName == msbuild ? RecordingRunner.Ok()
+            : null);
+
+        await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
+
+        var build = runner.For(msbuild).Single();
+        Assert.EndsWith("app.csproj", build.Arguments[1]);
+        Assert.DoesNotContain(runner.Specs, spec => spec.FileName == dotnetScanner);
+        Assert.True(_world.Done("SonarDotNet", 1));
+    }
+
+    [Fact]
+    public async Task SonarDotNetFallsBackToBuildlessStandardScanWhenBuildFails()
+    {
+        var sonar = new FakeSonar { TotalFor = _ => 0 };
+        var dotnet = Program("dotnet");
+        var cli = Program("sonar-scanner");
+        ConfigureSonar("SonarDotNet", sonar, t => t with
+        {
+            DotnetPath = dotnet,
+            RunAs = new RunAsSettings { Account = @"CORP\svc-build", PasswordSecret = "build-password" }
+        });
+        _world.AddSecret("build-password", AccountPassword);
+        _world.WithTool("SonarStandard", t => t with { ExePath = cli });
+        await CloneAsync(("app.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>"));
+        var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
+        var runner = _world.Intercept(spec =>
+            spec.FileName == scanner ? RecordingRunner.Ok()
+            : spec.FileName == dotnet ? new ProcessResult
+            {
+                Outcome = ProcessOutcome.Failed,
+                ExitCode = 1,
+                Attempts = 1,
+                StdOut = "app.csproj: error MSB3644: targeting pack missing",
+                Message = "exited with code 1"
+            }
+            : spec.FileName == cli ? ScannerOk(spec, ".scannerwork")
+            : null);
+
+        await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
+
+        var fallback = runner.For(cli).Single();
+        Assert.Contains("-Dsonar.sources=.", fallback.Arguments);
+        Assert.Contains(fallback.Arguments, argument => argument.StartsWith("-Dsonar.token="));
+        Assert.Null(fallback.RunAs);
+        Assert.Equal(new RunAsAccount(@"CORP\svc-build", AccountPassword), runner.For(dotnet).Single().RunAs);
+        Assert.True(_world.Done("SonarDotNet", 1));
+        Assert.Contains("\"scanMode\": \"buildless-fallback\"", _world.DoneText("SonarDotNet", 1));
+        Assert.Contains("\"fallbackFrom\": \"MissingTargetingPack\"", _world.DoneText("SonarDotNet", 1));
+        Assert.Contains("\"failureCode\": \"MSB3644\"", _world.DoneText("SonarDotNet", 1));
+        Assert.Contains("\"diagnosticFile\":", _world.DoneText("SonarDotNet", 1));
+
+        using var done = JsonDocument.Parse(_world.DoneText("SonarDotNet", 1));
+        var diagnostic = done.RootElement.GetProperty("diagnosticFile").GetString()!;
+        var diagnosticPath = Path.Combine(_world.Context.Paths.RunFolder, diagnostic);
+        using var output = JsonDocument.Parse(File.ReadAllText(diagnosticPath));
+        Assert.Contains("MSB3644", output.RootElement.GetProperty("standardOutput").GetString());
+    }
+
+    [Fact]
+    public async Task SonarDotNetFailureMarkerRecordsNuGetCodeAndCauseCategory()
+    {
+        var sonar = new FakeSonar();
+        var dotnet = Program("dotnet");
+        ConfigureSonar("SonarDotNet", sonar, t => t with { DotnetPath = dotnet, FallbackToStandardScanner = false });
+        await CloneAsync(("app.sln", "x"));
+        var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
+        _world.Intercept(spec =>
+            spec.FileName == dotnet
+                ? new ProcessResult
+                {
+                    Outcome = ProcessOutcome.Failed,
+                    ExitCode = 1,
+                    Attempts = 1,
+                    StdOut = "error NU1301: feed returned 401",
+                    Message = "exited with code 1"
+                }
+                : spec.FileName == scanner ? RecordingRunner.Ok() : null);
+
+        await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
+
+        Assert.Contains("\"category\": \"NuGetFeed\"", _world.FailedText("SonarDotNet", 1));
+        Assert.Contains("\"failureCode\": \"NU1301\"", _world.FailedText("SonarDotNet", 1));
+        Assert.Contains("\"diagnosticFile\":", _world.FailedText("SonarDotNet", 1));
+    }
+
+    [Fact]
+    public async Task SonarDotNetClassifiesAnUnregisteredComReference()
+    {
+        var sonar = new FakeSonar();
+        var dotnet = Program("dotnet");
+        ConfigureSonar("SonarDotNet", sonar, t => t with { DotnetPath = dotnet, FallbackToStandardScanner = false });
+        await CloneAsync(("app.sln", "x"));
+        var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
+        _world.Intercept(spec =>
+            spec.FileName == dotnet
+                ? new ProcessResult
+                {
+                    Outcome = ProcessOutcome.Failed,
+                    ExitCode = 1,
+                    Attempts = 1,
+                    StdOut = "warning MSB3284: Library not registered\nerror CS0246: type or namespace name 'CIServer' could not be found",
+                    Message = "exited with code 1"
+                }
+                : spec.FileName == scanner ? RecordingRunner.Ok() : null);
+
+        await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
+
+        Assert.Contains("\"category\": \"MissingComReference\"", _world.FailedText("SonarDotNet", 1));
+        Assert.Contains("\"failureCode\": \"CS0246\"", _world.FailedText("SonarDotNet", 1));
+    }
+
+    [Fact]
+    public async Task SonarDotNetSkipsSsisOnlyReposAsNotApplicable()
+    {
+        var sonar = new FakeSonar();
+        ConfigureSonar("SonarDotNet", sonar);
+        await CloneAsync(("LegacySsis.dtproj", "<Project></Project>"), ("LegacySsis.sln", "SSIS solution"));
+        var runner = _world.Intercept(_ => null);
+
+        await new SonarDotNetTool(sonar.Handler, (_, _) => Task.CompletedTask).RunAsync(_world.Context);
+
+        Assert.DoesNotContain(runner.Specs, s => s.FileName.Contains("sonarscanner", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("NotApplicable", _world.SkippedReason("SonarDotNet", 1));
     }
 
     [Fact]
@@ -610,7 +748,7 @@ public class ScannerToolTests : IDisposable
     {
         var sonar = new FakeSonar();
         var dotnet = Program("dotnet");
-        ConfigureSonar("SonarDotNet", sonar, t => t with { DotnetPath = dotnet });
+        ConfigureSonar("SonarDotNet", sonar, t => t with { DotnetPath = dotnet, FallbackToStandardScanner = false });
         await CloneAsync(("app.sln", "x"));
         var scanner = _world.Context.Config.Current.Tool("SonarDotNet").ExePath!;
         var runner = _world.Intercept(spec =>

@@ -47,8 +47,8 @@ public abstract class ProcessScanTool : ScanToolBase
     }
 
     /// <summary>
-    /// A spec for one run of the tool: this tool's secrets as environment variables (every other tool's cleared), the
-    /// run-as account if there is one, the tool's retry policy, and at most <paramref name="timeout"/> (the tool's own
+    /// A spec for one run: the selected tool's secrets as environment variables (every other tool's cleared), its
+    /// run-as account when configured, the retry policy, and at most <paramref name="timeout"/> (the work item's own
     /// timeout if none is given).
     /// </summary>
     protected async Task<ProcessSpec> BuildSpecAsync(
@@ -56,18 +56,21 @@ public abstract class ProcessScanTool : ScanToolBase
         ProcessSpec spec,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null,
-        RetryPolicy? retry = null)
+        RetryPolicy? retry = null,
+        string? settingsToolName = null)
     {
+        var toolName = settingsToolName ?? Name;
+        var settings = work.Run.Config.Current.Tool(toolName);
         spec = spec with
         {
             Timeout = timeout ?? work.Limits.Timeout,
             Retry = retry ?? work.Limits.Retry
         };
-        spec = await work.Run.Secrets.ApplyAsync(spec, Name, cancellationToken);
+        spec = await work.Run.Secrets.ApplyAsync(spec, toolName, cancellationToken);
 
-        if (Settings(work.Run).RunAs is { } runAs && !string.IsNullOrWhiteSpace(runAs.Account))
+        if (settings.RunAs is { } runAs && !string.IsNullOrWhiteSpace(runAs.Account))
         {
-            var password = await work.Run.Secrets.GetSecretAsync(runAs.PasswordSecret, $"{Name} (runAs {runAs.Account})", cancellationToken);
+            var password = await work.Run.Secrets.GetSecretAsync(runAs.PasswordSecret, $"{toolName} (runAs {runAs.Account})", cancellationToken);
             spec = spec with { RunAs = new RunAsAccount(runAs.Account, password) };
         }
 

@@ -225,7 +225,7 @@ public static partial class DotNetProjects
             string.IsNullOrWhiteSpace(settings.GitPath) ? "git" : settings.GitPath,
             settings.LongPaths ?? true);
 
-        var result = await git.LocalAsync(workingPath, ["ls-files", "-z", "--", "*.sln", "*.csproj"], cancellationToken);
+        var result = await git.LocalAsync(workingPath, ["ls-files", "-z", "--", "*.sln", "*.csproj", "*.vbproj", "*.sqlproj", "*.dtproj"], cancellationToken);
         if (!result.Succeeded)
         {
             throw new InvalidOperationException($"Could not list the files of the repo: {result.Message}");
@@ -238,7 +238,7 @@ public static partial class DotNetProjects
     /// What to build: the .sln nearest the top (then the shortest name), so a repo with several projects builds as
     /// one; otherwise the .csproj nearest the top. Null if there is neither.
     /// </summary>
-    public static string? BuildTarget(IReadOnlyList<string> files)
+    public static string? BuildTarget(IReadOnlyList<string> files, string? workingPath = null)
     {
         static int Depth(string path) => path.Count(c => c is '/' or '\\');
 
@@ -248,19 +248,46 @@ public static partial class DotNetProjects
                  .ThenBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)
                  .ThenBy(f => f, StringComparer.Ordinal);
 
-        return Of(".sln").Concat(Of(".csproj")).FirstOrDefault();
+        var solutions = Of(".sln");
+        if (workingPath is not null)
+        {
+            solutions = solutions.Where(solution => !SolutionContainsSsisProject(workingPath, solution));
+        }
+
+        return solutions.Concat(Of(".csproj"))
+            .Concat(Of(".vbproj"))
+            .Concat(Of(".sqlproj"))
+            .FirstOrDefault();
+    }
+
+    /// <summary>True when the repo only contains solution files and SSIS projects, which SonarDotNet cannot scan.</summary>
+    public static bool IsSsisOnly(IReadOnlyList<string> files) =>
+        files.Any(f => f.EndsWith(".dtproj", StringComparison.OrdinalIgnoreCase))
+        && !files.Any(f => new[] { ".csproj", ".vbproj", ".sqlproj" }
+            .Any(extension => f.EndsWith(extension, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool SolutionContainsSsisProject(string workingPath, string solution)
+    {
+        var path = Path.Combine(workingPath, solution);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        return SolutionProjectPath().Matches(File.ReadAllText(path)).Cast<Match>()
+            .Any(match => Path.GetExtension(match.Groups["path"].Value).Equals(".dtproj", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
-    /// Legacy projects and solutions with non-SDK projects need Visual Studio MSBuild; use the dotnet CLI only when
-    /// every project referenced by the solution is an SDK-style C# project.
+    /// Legacy projects and projects that need Framework-only build tasks need Visual Studio MSBuild.
+    /// Use dotnet only when every project referenced by the solution is SDK-style and has no COM references.
     /// </summary>
     public static bool RequiresMsbuild(string workingPath, string target)
     {
         var targetPath = Path.GetFullPath(Path.Combine(workingPath, target));
         if (!Path.GetExtension(target).Equals(".sln", StringComparison.OrdinalIgnoreCase))
         {
-            return !IsSdkStyleProject(targetPath);
+            return !CanUseDotnetBuild(targetPath);
         }
 
         var root = Path.GetFullPath(workingPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
@@ -281,7 +308,7 @@ public static partial class DotNetProjects
             }
 
             var projectPath = Path.GetFullPath(Path.Combine(solutionDirectory, project));
-            if (!projectPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !IsSdkStyleProject(projectPath))
+            if (!projectPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !CanUseDotnetBuild(projectPath))
             {
                 return true;
             }
@@ -290,7 +317,7 @@ public static partial class DotNetProjects
         return false;
     }
 
-    private static bool IsSdkStyleProject(string path)
+    private static bool CanUseDotnetBuild(string path)
     {
         if (!File.Exists(path))
         {
@@ -300,8 +327,10 @@ public static partial class DotNetProjects
         try
         {
             var document = XDocument.Load(path);
-            return document.Root?.Attribute("Sdk") is { Value.Length: > 0 }
+            var sdkStyle = document.Root?.Attribute("Sdk") is { Value.Length: > 0 }
                 || document.Descendants().Any(element => element.Name.LocalName == "Sdk");
+            return sdkStyle && !document.Descendants().Any(element =>
+                element.Name.LocalName is "COMReference" or "COMFileReference" or "ResolveComReference");
         }
         catch (XmlException)
         {

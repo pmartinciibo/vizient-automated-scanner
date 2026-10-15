@@ -195,6 +195,15 @@ public sealed record ToolSettings
     /// <summary>SonarDotNet only. Optional Visual Studio MSBuild.exe path for legacy project builds; otherwise discovered with vswhere.</summary>
     public string? MsbuildPath { get; init; }
 
+    /// <summary>SonarDotNet only. Framework SonarScanner executable used with Visual Studio MSBuild.</summary>
+    public string? MsbuildScannerPath { get; init; }
+
+    /// <summary>SonarDotNet only. Version of the Framework SonarScanner, for the scan skip key.</summary>
+    public string? MsbuildScannerVersion { get; init; }
+
+    /// <summary>SonarDotNet only. Run SonarScanner CLI without a build if the .NET build fails. Defaults to true.</summary>
+    public bool? FallbackToStandardScanner { get; init; }
+
     /// <summary>Snyk only. The Snyk organization the results are reported to (--org). Left out means the account's default.</summary>
     public string? Org { get; init; }
 

@@ -8,6 +8,9 @@ public sealed record ToolDoneMarker
     public string ToolVersion { get; init; } = string.Empty;
     public string RulesVersion { get; init; } = string.Empty;
     public string ConfigHash { get; init; } = string.Empty;
+    public string? FallbackFrom { get; init; }
+    public string? FailureCode { get; init; }
+    public string? DiagnosticFile { get; init; }
     public DateTimeOffset StartedAt { get; init; }
     public DateTimeOffset EndedAt { get; init; }
     public int FindingCount { get; init; }
@@ -22,6 +25,8 @@ public sealed record ToolFailedMarker
 {
     public int SchemaVersion { get; init; } = 3;
     public string Category { get; init; } = string.Empty;
+    public string? FailureCode { get; init; }
+    public string? DiagnosticFile { get; init; }
     public int Attempts { get; init; }
     public string Message { get; init; } = string.Empty;
     public string? Sha { get; init; }
